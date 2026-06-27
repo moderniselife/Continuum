@@ -1,0 +1,157 @@
+/* ── Google Fonts ────────────────────────────────────── */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
+
+/**
+ * Continuum Web Theme — Default dark theme CSS variables.
+ *
+ * In VS Code, these are injected by the host. In web mode, we provide
+ * our own values to match a modern dark theme aesthetic.
+ *
+ * This file is injected via indexWeb.html and only applies when running
+ * in the browser (not inside VS Code or JetBrains).
+ */
+
+:root {
+  /* ── Core Colours ──────────────────────────────────── */
+  --vscode-foreground: #d4d4d4;
+  --vscode-descriptionForeground: #9e9e9e;
+  --vscode-editor-background: #1a1a2e;
+  --vscode-editor-foreground: #e0e0e0;
+  --vscode-panel-background: #16162a;
+  --vscode-panel-border: rgba(255, 255, 255, 0.08);
+
+  /* ── Typography ────────────────────────────────────── */
+  --vscode-font-family:
+    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
+    Ubuntu, Cantarell, sans-serif;
+  --vscode-editor-font-family:
+    "JetBrains Mono", "Fira Code", "SF Mono", "Cascadia Code", Menlo, Monaco,
+    "Courier New", monospace;
+
+  /* ── Buttons ───────────────────────────────────────── */
+  --vscode-button-background: #6c63ff;
+  --vscode-button-foreground: #ffffff;
+  --vscode-button-hoverBackground: #7c74ff;
+
+  /* ── Badges ────────────────────────────────────────── */
+  --vscode-badge-background: #6c63ff;
+  --vscode-badge-foreground: #ffffff;
+
+  /* ── Links ─────────────────────────────────────────── */
+  --vscode-textLink-foreground: #7c8aff;
+  --vscode-textLink-activeForeground: #a0aaff;
+
+  /* ── Lists / Selections ────────────────────────────── */
+  --vscode-list-activeSelectionBackground: rgba(108, 99, 255, 0.25);
+  --vscode-list-activeSelectionForeground: #ffffff;
+  --vscode-list-inactiveSelectionBackground: rgba(108, 99, 255, 0.12);
+  --vscode-list-inctiveSelectionForeground: #d4d4d4;
+  --vscode-list-errorForeground: #f44336;
+  --vscode-list-warningForeground: #ff9800;
+
+  /* ── Editor Search ─────────────────────────────────── */
+  --vscode-editor-findMatchBackground: rgba(108, 99, 255, 0.3);
+
+  /* ── Status Bar ────────────────────────────────────── */
+  --vscode-statusBarItem-errorBackground: #d32f2f;
+  --vscode-statusBarItem-errorForeground: #ffffff;
+  --vscode-statusBarItem-warningBackground: #e65100;
+  --vscode-statusBarItem-warningForeground: #ffffff;
+
+  /* ── Command Center ────────────────────────────────── */
+  --vscode-commandCenter-inactiveBorder: rgba(255, 255, 255, 0.1);
+
+  /* ── Charts ────────────────────────────────────────── */
+  --vscode-charts-blue: #64b5f6;
+  --vscode-charts-green: #81c784;
+  --vscode-charts-orange: #ffb74d;
+  --vscode-charts-purple: #ba68c8;
+  --vscode-charts-red: #e57373;
+  --vscode-charts-yellow: #fff176;
+
+  /* ── Extra UI vars used by the GUI ─────────────────── */
+  --vscode-input-background: #1e1e3a;
+  --vscode-input-foreground: #e0e0e0;
+  --vscode-input-border: rgba(255, 255, 255, 0.12);
+  --vscode-input-placeholderForeground: #6b6b8d;
+  --vscode-sideBar-background: #131325;
+  --vscode-sideBar-foreground: #c8c8d4;
+  --vscode-sideBarTitle-foreground: #ffffff;
+  --vscode-titleBar-activeBackground: #0f0f22;
+  --vscode-titleBar-activeForeground: #d4d4d4;
+  --vscode-dropdown-background: #1e1e3a;
+  --vscode-dropdown-foreground: #e0e0e0;
+  --vscode-dropdown-border: rgba(255, 255, 255, 0.12);
+  --vscode-checkbox-background: #1e1e3a;
+  --vscode-checkbox-border: rgba(255, 255, 255, 0.2);
+  --vscode-focusBorder: #6c63ff;
+  --vscode-scrollbar-shadow: rgba(0, 0, 0, 0.4);
+  --vscode-scrollbarSlider-background: rgba(255, 255, 255, 0.1);
+  --vscode-scrollbarSlider-hoverBackground: rgba(255, 255, 255, 0.18);
+  --vscode-scrollbarSlider-activeBackground: rgba(255, 255, 255, 0.25);
+  --vscode-widget-shadow: rgba(0, 0, 0, 0.4);
+  --vscode-separator-foreground: rgba(255, 255, 255, 0.08);
+  --vscode-icon-foreground: #c8c8d4;
+  --vscode-tab-activeForeground: #ffffff;
+  --vscode-tab-inactiveForeground: #8e8ea0;
+  --vscode-tab-activeBackground: #1a1a2e;
+  --vscode-tab-inactiveBackground: #131325;
+  --vscode-tab-border: rgba(255, 255, 255, 0.06);
+  --vscode-progressBar-background: #6c63ff;
+  --vscode-notificationCenterHeader-background: #1e1e3a;
+  --vscode-notifications-background: #1e1e3a;
+  --vscode-notifications-foreground: #e0e0e0;
+  --vscode-editorWidget-background: #1e1e3a;
+  --vscode-editorWidget-foreground: #e0e0e0;
+  --vscode-editorWidget-border: rgba(255, 255, 255, 0.1);
+}
+
+/* ── Global Resets for Web Mode ──────────────────────── */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--vscode-editor-background);
+  color: var(--vscode-foreground);
+  font-family: var(--vscode-font-family);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Scrollbar Styling ───────────────────────────────── */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--vscode-scrollbarSlider-background);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--vscode-scrollbarSlider-hoverBackground);
+}
+
+/* ── Selection ───────────────────────────────────────── */
+::selection {
+  background-color: rgba(108, 99, 255, 0.35);
+  color: #ffffff;
+}
+
+/* ── Links ───────────────────────────────────────────── */
+a {
+  color: var(--vscode-textLink-foreground);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--vscode-textLink-activeForeground);
+  text-decoration: underline;
+}
