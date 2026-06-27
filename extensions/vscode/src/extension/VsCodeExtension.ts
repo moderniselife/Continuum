@@ -137,7 +137,7 @@ export class VsCodeExtension {
             );
           } else if (selection === "Select different model") {
             vscode.commands.executeCommand(
-              "continue.openTabAutocompleteConfigMenu",
+              "continuum.openTabAutocompleteConfigMenu",
             );
           }
         });

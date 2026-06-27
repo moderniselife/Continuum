@@ -1,7 +1,7 @@
 {
-  "name": "@continuedev/cli",
+  "name": "@moderniselife/continuum-cli",
   "version": "0.0.0-dev",
-  "description": "Continue CLI",
+  "description": "Continuum CLI — a community-maintained fork of Continue",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
