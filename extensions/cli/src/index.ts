@@ -10,6 +10,7 @@ import { checks } from "./commands/checks.js";
 import { listSessionsCommand } from "./commands/ls.js";
 import { review } from "./commands/review.js";
 import { serve } from "./commands/serve.js";
+import { web } from "./commands/web.js";
 import {
   handleValidationErrors,
   validateFlags,
@@ -358,6 +359,26 @@ program
   .option("--verbose", "Enable verbose logging")
   .action(async (options) => {
     await review(options);
+  });
+
+// Web Server subcommand
+program
+  .command("web")
+  .description("Start the Continuum Web Server (browser UI + REST API)")
+  .option("--port <port>", "Port to listen on (default: 3000)", "3000")
+  .option(
+    "--host <host>",
+    "Host to bind to (default: localhost, use 0.0.0.0 for remote access)",
+    "localhost",
+  )
+  .option(
+    "--workspace <path>",
+    "Workspace directory (default: current directory)",
+  )
+  .option("--token <token>", "API authentication token")
+  .option("--open", "Open browser on start")
+  .action(async (options) => {
+    await web(options);
   });
 
 // Handle unknown commands

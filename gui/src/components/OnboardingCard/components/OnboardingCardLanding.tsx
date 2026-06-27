@@ -1,5 +1,5 @@
 import { SecondaryButton } from "../..";
-import ContinuumLogo from "../../svg/ContinuumLogo";
+import ContinuumLogo from "../../svg/ContinueLogo";
 
 export function OnboardingCardLanding({
   onSelectConfigure,

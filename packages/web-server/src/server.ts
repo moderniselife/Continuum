@@ -4,14 +4,11 @@ import helmet from "helmet";
 import * as path from "path";
 import * as fs from "fs";
 import { createServer } from "http";
-import { fileURLToPath } from "url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 import { authMiddleware, isAuthEnabled } from "./auth/middleware.js";
 import apiRoutes from "./routes/api.js";
 import { WebSocketHandler } from "./ws/handler.js";
+import { CoreManager } from "./ws/CoreManager.js";
 
 export interface ServerOptions {
   port: number;
@@ -98,10 +95,24 @@ export function createContinuumServer(options: ServerOptions) {
   }
 
   // ============================================================
-  // HTTP + WebSocket Server
+  // HTTP + WebSocket Server + Core Engine
   // ============================================================
   const httpServer = createServer(app);
   const wsHandler = new WebSocketHandler(httpServer);
+  const coreManager = new CoreManager(options.workspaceDirs);
 
-  return { app, httpServer, wsHandler };
+  // Wire Core to each WebSocket connection
+  wsHandler.onConnection(async (conn) => {
+    try {
+      await coreManager.createCore(conn);
+    } catch (error) {
+      console.error(`[Server] Failed to create Core for ${conn.id}:`, error);
+    }
+  });
+
+  wsHandler.onDisconnection((id) => {
+    coreManager.removeCore(id);
+  });
+
+  return { app, httpServer, wsHandler, coreManager };
 }

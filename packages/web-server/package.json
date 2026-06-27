@@ -4,7 +4,6 @@
   "description": "Continuum Web Server — access Continuum's AI coding agent via browser and REST API",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "type": "module",
   "bin": {
     "continuum-server": "dist/index.js"
   },
