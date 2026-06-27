@@ -25,14 +25,16 @@ export function setConfigFilePermissions(filePath: string): void {
 }
 
 const CONTINUE_GLOBAL_DIR = (() => {
-  const configPath = process.env.CONTINUE_GLOBAL_DIR;
+  // Prefer CONTINUUM_GLOBAL_DIR, fall back to CONTINUE_GLOBAL_DIR for backwards compatibility
+  const configPath =
+    process.env.CONTINUUM_GLOBAL_DIR ?? process.env.CONTINUE_GLOBAL_DIR;
   if (configPath) {
     // Convert relative path to absolute paths based on current working directory
     return path.isAbsolute(configPath)
       ? configPath
       : path.resolve(process.cwd(), configPath);
   }
-  return path.join(os.homedir(), ".continue");
+  return path.join(os.homedir(), ".continuum");
 })();
 
 // export const DEFAULT_CONFIG_TS_CONTENTS = `import { Config } from "./types"\n\nexport function modifyConfig(config: Config): Config {
@@ -56,18 +58,27 @@ export function getContinueUtilsPath(): string {
 }
 
 export function getGlobalContinueIgnorePath(): string {
-  const continueIgnorePath = path.join(
+  const continuumIgnorePath = path.join(
     getContinueGlobalPath(),
-    ".continueignore",
+    ".continuumignore",
   );
-  if (!fs.existsSync(continueIgnorePath)) {
-    fs.writeFileSync(continueIgnorePath, "");
+
+  // Fall back to legacy .continueignore if the new file doesn't exist yet
+  if (!fs.existsSync(continuumIgnorePath)) {
+    const legacyIgnorePath = path.join(
+      getContinueGlobalPath(),
+      ".continueignore",
+    );
+    if (fs.existsSync(legacyIgnorePath)) {
+      return legacyIgnorePath;
+    }
+    fs.writeFileSync(continuumIgnorePath, "");
   }
-  return continueIgnorePath;
+  return continuumIgnorePath;
 }
 
 export function getContinueGlobalPath(): string {
-  // This is ~/.continue on mac/linux
+  // This is ~/.continuum on mac/linux
   const continuePath = CONTINUE_GLOBAL_DIR;
   if (!fs.existsSync(continuePath)) {
     fs.mkdirSync(continuePath);
@@ -209,10 +220,19 @@ export function getTsConfigPath(): string {
 
 export function getContinueRcPath(): string {
   // Disable indexing of the config folder to prevent infinite loops
-  const continuercPath = path.join(getContinueGlobalPath(), ".continuerc.json");
-  if (!fs.existsSync(continuercPath)) {
+  const continuumrcPath = path.join(
+    getContinueGlobalPath(),
+    ".continuumrc.json",
+  );
+
+  // Fall back to legacy .continuerc.json if the new file doesn't exist yet
+  if (!fs.existsSync(continuumrcPath)) {
+    const legacyRcPath = path.join(getContinueGlobalPath(), ".continuerc.json");
+    if (fs.existsSync(legacyRcPath)) {
+      return legacyRcPath;
+    }
     fs.writeFileSync(
-      continuercPath,
+      continuumrcPath,
       JSON.stringify(
         {
           disableIndexing: true,
@@ -222,7 +242,7 @@ export function getContinueRcPath(): string {
       ),
     );
   }
-  return continuercPath;
+  return continuumrcPath;
 }
 
 function getDevDataPath(): string {

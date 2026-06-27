@@ -13,6 +13,7 @@ import {
   getConfigYamlPath,
   getContinueGlobalPath,
 } from "core/util/paths";
+import { migrateFromContinue } from "core/util/migration";
 import { v4 as uuidv4 } from "uuid";
 import * as vscode from "vscode";
 
@@ -170,6 +171,14 @@ export class VsCodeExtension {
   }
 
   constructor(context: vscode.ExtensionContext) {
+    // Run Continue → Continuum migration before anything else touches config
+    const migrationResult = migrateFromContinue();
+    if (migrationResult.migrated) {
+      vscode.window.showInformationMessage(
+        `⚡ Welcome to Continuum! Migrated ${migrationResult.itemsCopied.length} items from your Continue installation.`,
+      );
+    }
+
     this.editDecorationManager = new EditDecorationManager(context);
 
     let resolveWebviewProtocol: any = undefined;
@@ -253,7 +262,7 @@ export class VsCodeExtension {
     // Sidebar
     context.subscriptions.push(
       vscode.window.registerWebviewViewProvider(
-        "continue.continueGUIView",
+        "continuum.continuumGUIView",
         this.sidebar,
         {
           webviewOptions: { retainContextWhenHidden: true },
@@ -393,7 +402,7 @@ export class VsCodeExtension {
 
     context.subscriptions.push(
       vscode.window.registerWebviewViewProvider(
-        "continue.continueConsoleView",
+        "continuum.continuumConsoleView",
         this.consoleView,
       ),
     );
