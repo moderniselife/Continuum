@@ -7,10 +7,11 @@
 import { useEffect, useRef } from "react";
 import { MessageSquare } from "lucide-react";
 import { useChatStore } from "@/stores/chatStore";
+import type { ChatMessage } from "@/api/types";
 import MessageBubble from "./MessageBubble";
 
 const ChatView = () => {
-  const messages = useChatStore((s) => s.messages);
+  const messages = useChatStore((s) => s.getActiveTab()?.messages ?? []);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when messages change
@@ -32,7 +33,7 @@ const ChatView = () => {
 
   return (
     <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-4">
-      {messages.map((msg) => (
+      {messages.map((msg: ChatMessage) => (
         <MessageBubble key={msg.id} message={msg} />
       ))}
       <div ref={bottomRef} />

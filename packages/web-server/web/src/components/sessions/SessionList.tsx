@@ -1,17 +1,11 @@
 import { useMemo } from "react";
 import { useSessionStore } from "@/stores/sessionStore";
+import type { SessionMetadata } from "@/api/types";
 import SessionItem from "@/components/sessions/SessionItem";
-
-interface Session {
-  id: string;
-  title: string;
-  lastMessageAt: number;
-  messageCount: number;
-}
 
 interface SessionGroup {
   label: string;
-  sessions: Session[];
+  sessions: SessionMetadata[];
 }
 
 /**
@@ -26,13 +20,13 @@ const startOfDay = (date: Date): number => {
 /**
  * Groups sessions into date-based buckets: Today, Yesterday, Previous 7 Days, Older.
  */
-const groupSessionsByDate = (sessions: Session[]): SessionGroup[] => {
+const groupSessionsByDate = (sessions: SessionMetadata[]): SessionGroup[] => {
   const now = new Date();
   const todayStart = startOfDay(now);
   const yesterdayStart = todayStart - 86_400_000;
   const weekStart = todayStart - 7 * 86_400_000;
 
-  const groups: Record<string, Session[]> = {
+  const groups: Record<string, SessionMetadata[]> = {
     Today: [],
     Yesterday: [],
     "Previous 7 Days": [],
@@ -40,7 +34,7 @@ const groupSessionsByDate = (sessions: Session[]): SessionGroup[] => {
   };
 
   for (const session of sessions) {
-    const ts = session.lastMessageAt;
+    const ts = new Date(session.updatedAt).getTime();
     if (ts >= todayStart) {
       groups["Today"].push(session);
     } else if (ts >= yesterdayStart) {

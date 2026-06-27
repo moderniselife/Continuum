@@ -4,14 +4,16 @@
  * Contains a "New Chat" button, a search input, and the session list.
  */
 
+import { useState } from "react";
 import { Plus, Search } from "lucide-react";
 import { useSessionStore } from "@/stores/sessionStore";
-import { useConfigStore } from "@/stores/configStore";
+import { useChatStore } from "@/stores/chatStore";
 import SessionList from "@/components/sessions/SessionList";
 
 function Sidebar() {
-  const { createSession, searchQuery, setSearchQuery } = useSessionStore();
-  const sidebarOpen = useConfigStore((s) => s.sidebarOpen);
+  const { searchQuery, setSearchQuery } = useSessionStore();
+  const newChat = useChatStore((s) => s.newChat);
+  const [sidebarOpen] = useState(true);
 
   return (
     <aside
@@ -22,7 +24,7 @@ function Sidebar() {
       {/* New Chat button */}
       <button
         type="button"
-        onClick={createSession}
+        onClick={() => newChat()}
         className="bg-accent hover:bg-accent-hover flex w-full items-center justify-center gap-2 rounded-md py-1.5 text-sm font-medium text-white transition-all duration-150"
       >
         <Plus size={16} />

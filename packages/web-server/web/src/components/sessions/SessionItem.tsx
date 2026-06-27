@@ -1,24 +1,20 @@
 import { useCallback } from "react";
 import { Trash2 } from "lucide-react";
+import { useChatStore } from "@/stores/chatStore";
 import { useSessionStore } from "@/stores/sessionStore";
-
-interface Session {
-  id: string;
-  title: string;
-  lastMessageAt: number;
-  messageCount: number;
-}
+import type { SessionMetadata } from "@/api/types";
 
 interface SessionItemProps {
-  session: Session;
+  session: SessionMetadata;
 }
 
 /**
- * Formats a Unix timestamp into a human-readable relative time string.
+ * Formats a relative time string from an ISO-8601 timestamp.
  * E.g. "just now", "5m ago", "2h ago", "3d ago".
  */
-const formatRelativeTime = (timestamp: number): string => {
+const formatRelativeTime = (isoDate: string): string => {
   const now = Date.now();
+  const timestamp = new Date(isoDate).getTime();
   const diffMs = now - timestamp;
   const diffSeconds = Math.floor(diffMs / 1000);
   const diffMinutes = Math.floor(diffSeconds / 60);
@@ -43,21 +39,24 @@ const formatRelativeTime = (timestamp: number): string => {
  * Shows title, relative timestamp, message count, and a delete button on hover.
  */
 const SessionItem = ({ session }: SessionItemProps) => {
-  const { activeSessionId, setActiveSession, deleteSession } =
-    useSessionStore();
+  const activeTabId = useChatStore((s) => s.activeTabId);
+  const openSession = useChatStore((s) => s.openSession);
+  const removeSession = useSessionStore((s) => s.removeSession);
 
-  const isActive = activeSessionId === session.id;
+  // A session is "active" if the currently active tab is backed by this session
+  const activeTab = useChatStore((s) => s.getActiveTab());
+  const isActive = activeTab?.sessionId === session.id;
 
   const handleClick = useCallback(() => {
-    setActiveSession(session.id);
-  }, [session.id, setActiveSession]);
+    openSession(session.id);
+  }, [session.id, openSession]);
 
   const handleDelete = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      deleteSession(session.id);
+      removeSession(session.id);
     },
-    [session.id, deleteSession],
+    [session.id, removeSession],
   );
 
   return (
@@ -79,7 +78,7 @@ const SessionItem = ({ session }: SessionItemProps) => {
         </p>
         <div className="mt-0.5 flex items-center gap-2">
           <span className="text-text-tertiary text-xs">
-            {formatRelativeTime(session.lastMessageAt)}
+            {formatRelativeTime(session.updatedAt)}
           </span>
           <span className="bg-bg-elevated text-text-tertiary rounded-full px-1.5 py-0.5 text-xs">
             {session.messageCount}

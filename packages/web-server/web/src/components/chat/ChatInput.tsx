@@ -21,8 +21,9 @@ const LINE_HEIGHT = 24; // Approximate line height in pixels
 const ChatInput = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const sendMessage = useChatStore((s) => s.sendMessage);
-  const isStreaming = useChatStore((s) => s.isStreaming);
-  const abortStream = useChatStore((s) => s.abortStream);
+  const abortStreaming = useChatStore((s) => s.abortStreaming);
+  const activeTab = useChatStore((s) => s.getActiveTab());
+  const isStreaming = activeTab?.isStreaming ?? false;
 
   /** Auto-resize the textarea based on content, capped at MAX_ROWS. */
   const handleResize = useCallback(() => {
@@ -36,7 +37,7 @@ const ChatInput = () => {
   }, []);
 
   const handleChange = useCallback(
-    (e: ChangeEvent<HTMLTextAreaElement>) => {
+    (_e: ChangeEvent<HTMLTextAreaElement>) => {
       // Trigger resize on every change
       handleResize();
     },
@@ -82,7 +83,7 @@ const ChatInput = () => {
 
         {isStreaming ? (
           <button
-            onClick={abortStream}
+            onClick={() => abortStreaming()}
             className="bg-error/20 hover:bg-error/30 text-error shrink-0 rounded-lg p-2 transition-all duration-150"
             aria-label="Abort generation"
           >

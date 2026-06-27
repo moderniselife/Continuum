@@ -6,6 +6,7 @@
 
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useChatStore } from "@/stores/chatStore";
+import { useConfigStore } from "@/stores/configStore";
 
 /** Map mode values to their corresponding theme colour classes. */
 const MODE_COLOUR: Record<string, string> = {
@@ -16,8 +17,11 @@ const MODE_COLOUR: Record<string, string> = {
 };
 
 function StatusBar() {
-  const { connected, status, modelName } = useConnectionStore();
-  const mode = useChatStore((s) => s.mode);
+  const status = useConnectionStore((s) => s.status);
+  const isConnected = status === "connected";
+  const mode = useChatStore((s) => s.getActiveTab()?.mode ?? "chat");
+  const selectedModel = useConfigStore((s) => s.getSelectedModel());
+  const modelName = selectedModel?.name ?? "";
 
   return (
     <footer className="bg-bg-surface border-border text-text-secondary flex h-[28px] select-none items-center justify-between border-t px-4 text-xs">
@@ -25,7 +29,7 @@ function StatusBar() {
       <div className="flex items-center gap-2">
         <span
           className={`h-2 w-2 rounded-full ${
-            connected ? "bg-success animate-pulse" : "bg-error"
+            isConnected ? "bg-success animate-pulse" : "bg-error"
           }`}
         />
         <span>{status}</span>

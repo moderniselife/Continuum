@@ -7,16 +7,10 @@
 
 import MarkdownRenderer from "@/components/markdown/MarkdownRenderer";
 import StreamingDots from "./StreamingDots";
-
-interface Message {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  timestamp: number;
-}
+import type { ChatMessage } from "@/api/types";
 
 interface MessageBubbleProps {
-  message: Message;
+  message: ChatMessage;
 }
 
 const MessageBubble = ({ message }: MessageBubbleProps) => {
@@ -45,7 +39,7 @@ const MessageBubble = ({ message }: MessageBubbleProps) => {
       <span
         className={`text-text-tertiary mt-1 text-xs ${isUser ? "text-right" : "text-left"} `}
       >
-        {new Date(message.timestamp).toLocaleTimeString("en-AU", {
+        {new Date(message.createdAt).toLocaleTimeString("en-AU", {
           hour: "2-digit",
           minute: "2-digit",
         })}
