@@ -78,7 +78,9 @@ const SessionItem = ({ session }: SessionItemProps) => {
         </p>
         <div className="mt-0.5 flex items-center gap-2">
           <span className="text-text-tertiary text-xs">
-            {formatRelativeTime(session.updatedAt)}
+            {formatRelativeTime(
+              session.lastModified ?? session.createdAt ?? "",
+            )}
           </span>
           <span className="bg-bg-elevated text-text-tertiary rounded-full px-1.5 py-0.5 text-xs">
             {session.messageCount}

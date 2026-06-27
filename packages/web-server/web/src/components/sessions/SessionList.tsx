@@ -34,7 +34,9 @@ const groupSessionsByDate = (sessions: SessionMetadata[]): SessionGroup[] => {
   };
 
   for (const session of sessions) {
-    const ts = new Date(session.updatedAt).getTime();
+    const ts = new Date(
+      session.lastModified ?? session.createdAt ?? "",
+    ).getTime();
     if (ts >= todayStart) {
       groups["Today"].push(session);
     } else if (ts >= yesterdayStart) {

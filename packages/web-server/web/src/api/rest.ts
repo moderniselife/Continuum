@@ -98,8 +98,18 @@ export function health(): Promise<HealthResponse> {
 // -- Sessions ---------------------------------------------------------------
 
 /** List all sessions (lightweight metadata only). */
-export function listSessions(): Promise<SessionMetadata[]> {
-  return apiFetch<SessionMetadata[]>("/sessions");
+export function listSessions(): Promise<{
+  sessions: SessionMetadata[];
+  total: number;
+  offset: number;
+  limit: number;
+}> {
+  return apiFetch<{
+    sessions: SessionMetadata[];
+    total: number;
+    offset: number;
+    limit: number;
+  }>("/sessions");
 }
 
 /** Retrieve a full session by ID, including message history. */
@@ -134,8 +144,8 @@ export function updateConfig(
 // -- Models -----------------------------------------------------------------
 
 /** List all available LLM models. */
-export function getModels(): Promise<ModelInfo[]> {
-  return apiFetch<ModelInfo[]>("/models");
+export function getModels(): Promise<{ models: ModelInfo[] }> {
+  return apiFetch<{ models: ModelInfo[] }>("/models");
 }
 
 // ---------------------------------------------------------------------------

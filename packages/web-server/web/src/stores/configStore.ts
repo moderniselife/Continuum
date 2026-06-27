@@ -56,7 +56,8 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
-      const models = await getModels();
+      const response = await getModels();
+      const models = response.models ?? [];
       const currentSelection = get().selectedModelId;
 
       // Validate persisted selection — if the model no longer exists on the

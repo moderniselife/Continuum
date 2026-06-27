@@ -307,7 +307,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             id: data.sessionId,
             title: data.title ?? tab.title,
             createdAt: tab.createdAt,
-            updatedAt: new Date().toISOString(),
+            lastModified: new Date().toISOString(),
             messageCount:
               get().tabs.find((t) => t.id === tabId)?.messages.length ?? 0,
             mode: tab.mode,

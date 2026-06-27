@@ -118,14 +118,14 @@ export interface SessionMetadata {
   id: string;
   /** User-defined or auto-generated session title. */
   title: string;
-  /** ISO-8601 creation timestamp. */
-  createdAt: string;
+  /** ISO-8601 creation timestamp (may not always be present). */
+  createdAt?: string;
   /** ISO-8601 last-activity timestamp. */
-  updatedAt: string;
+  lastModified?: string;
   /** Number of messages in this session. */
-  messageCount: number;
+  messageCount?: number;
   /** The chat mode used in this session. */
-  mode: ChatMode;
+  mode?: ChatMode;
 }
 
 /** Full session payload including message history. */

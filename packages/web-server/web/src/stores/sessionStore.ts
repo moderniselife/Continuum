@@ -60,7 +60,7 @@ export function groupSessionsByDate(
   ]);
 
   for (const session of sessions) {
-    const updated = new Date(session.updatedAt);
+    const updated = new Date(session.lastModified ?? session.createdAt ?? 0);
 
     if (updated >= startOfToday) {
       groups.get("Today")!.push(session);
@@ -139,12 +139,14 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
-      const sessions = await listSessions();
+      const response = await listSessions();
+      const sessions = response.sessions ?? [];
 
       // Sort newest-first by default.
       sessions.sort(
         (a, b) =>
-          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+          new Date(b.lastModified ?? b.createdAt ?? 0).getTime() -
+          new Date(a.lastModified ?? a.createdAt ?? 0).getTime(),
       );
 
       set({ sessions, isLoading: false });
@@ -230,7 +232,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       // Re-sort after upsert.
       next.sort(
         (a, b) =>
-          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+          new Date(b.lastModified ?? b.createdAt ?? 0).getTime() -
+          new Date(a.lastModified ?? a.createdAt ?? 0).getTime(),
       );
       return { sessions: next };
     });
