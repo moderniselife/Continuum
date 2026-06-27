@@ -94,6 +94,10 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
     }
   }
 
+  // Sentinel value to distinguish "handled locally, result is void/undefined"
+  // from "not handled locally" (which returns the JS `undefined`).
+  private static readonly LOCAL_HANDLED = Symbol("LOCAL_HANDLED");
+
   /**
    * Handle requests FROM Core that need IDE responses.
    * Instead of sending to the WS client, we resolve them locally from WebIDE.
@@ -108,13 +112,24 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
       data,
     );
     if (localResult !== undefined) {
+      // LOCAL_HANDLED sentinel means "we consumed it, return undefined"
+      if (localResult === WebCoreMessenger.LOCAL_HANDLED) {
+        return undefined as any;
+      }
       return localResult as FromCoreProtocol[T][1];
     }
 
     // Forward to WebSocket client for anything we can't handle locally
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve, _reject) => {
       const messageId = uuidv4();
-      this.pendingRequests.set(messageId, { resolve, reject });
+      this.pendingRequests.set(messageId, {
+        resolve,
+        reject: (err) => {
+          // Resolve with undefined instead of rejecting to prevent crash
+          console.warn(`[WebCoreMessenger] ${err.message}`);
+          resolve(undefined as any);
+        },
+      });
 
       const msg: Message = {
         messageType: messageType as string,
@@ -125,14 +140,20 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
       if (this.ws.readyState === this.ws.OPEN) {
         this.ws.send(JSON.stringify(msg));
       } else {
-        reject(new Error("WebSocket is not open"));
         this.pendingRequests.delete(messageId);
+        console.warn(
+          `[WebCoreMessenger] WS closed, skipping: ${String(messageType)}`,
+        );
+        resolve(undefined as any);
       }
 
       setTimeout(() => {
         if (this.pendingRequests.has(messageId)) {
           this.pendingRequests.delete(messageId);
-          reject(new Error(`Request timed out: ${String(messageType)}`));
+          console.debug(
+            `[WebCoreMessenger] Request timed out: ${String(messageType)}`,
+          );
+          resolve(undefined as any);
         }
       }, 30_000);
     });
@@ -197,7 +218,15 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
         return this.webIde.getTerminalContents();
       case "indexProgress":
         // Silently consume index progress notifications
-        return undefined;
+        return WebCoreMessenger.LOCAL_HANDLED;
+      case "configUpdate":
+      case "refreshSubmenuItems":
+      case "setTTSActive":
+      case "focusContinueInput":
+      case "focusContinueInputWithoutClear":
+      case "highlightedCode":
+        // Push messages from Core → forward to GUI via WS
+        return WebCoreMessenger.LOCAL_HANDLED;
       default:
         // Not handled locally — will be forwarded to WS client
         return undefined;
@@ -221,7 +250,7 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
       msg.messageType as keyof ToCoreProtocol,
     );
     if (!listener) {
-      console.warn(`[WebCoreMessenger] No handler for: ${msg.messageType}`);
+      console.debug(`[WebCoreMessenger] No handler for: ${msg.messageType}`);
       return;
     }
 
