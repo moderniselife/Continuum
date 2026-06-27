@@ -57,6 +57,7 @@ const saveSubsetFilters = [
     "toolGroupSettings",
     "ruleSettings",
     "reasoningSettings",
+    "yoloMode",
   ]),
   createFilter("indexing", []),
   createFilter("tabs", ["tabs"]),

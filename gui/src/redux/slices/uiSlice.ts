@@ -29,6 +29,7 @@ type UIState = {
   ruleSettings: RulePolicies;
   reasoningSettings: ReasoningSettings;
   ttsActive: boolean;
+  yoloMode: boolean;
 };
 
 export const DEFAULT_TOOL_SETTING: ToolPolicy = "allowedWithPermission";
@@ -43,6 +44,7 @@ export const DEFAULT_UI_SLICE: UIState = {
     getLocalStorage(LocalStorageKey.HasDismissedExploreDialog) ?? false,
   shouldAddFileForEditing: false,
   ttsActive: false,
+  yoloMode: false,
   toolSettings: {},
   toolGroupSettings: {
     [BUILT_IN_GROUP_NAME]: "include",
@@ -149,6 +151,9 @@ export const uiSlice = createSlice({
       state.reasoningSettings[action.payload.modelTitle] =
         action.payload.enabled;
     },
+    setYoloMode: (state, action: PayloadAction<boolean>) => {
+      state.yoloMode = action.payload;
+    },
   },
 });
 
@@ -166,6 +171,7 @@ export const {
   toggleRuleSetting,
   setTTSActive,
   setReasoningSetting,
+  setYoloMode,
 } = uiSlice.actions;
 
 export default uiSlice.reducer;

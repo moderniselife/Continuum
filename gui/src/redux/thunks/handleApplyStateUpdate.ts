@@ -52,8 +52,9 @@ export const handleApplyStateUpdate = createAsyncThunk<
         if (
           applyState.status === "done" &&
           toolCallState?.toolCall.function.name &&
-          getState().ui.toolSettings[toolCallState.toolCall.function.name] ===
-            "allowedWithoutPermission"
+          (getState().ui.toolSettings[toolCallState.toolCall.function.name] ===
+            "allowedWithoutPermission" ||
+            getState().ui.yoloMode)
         ) {
           extra.ideMessenger.post("acceptDiff", {
             streamId: applyState.streamId,

@@ -4,6 +4,7 @@ import {
   PencilIcon,
   WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
+import { BoltIcon } from "@heroicons/react/24/solid";
 import { useContext } from "react";
 import { useNavigate } from "react-router-dom";
 import { IdeMessengerContext } from "../../../../context/IdeMessenger";
@@ -13,6 +14,7 @@ import {
   selectToolCallsByStatus,
 } from "../../../../redux/selectors/selectToolCalls";
 import { setSelectedProfile } from "../../../../redux/slices/profilesSlice";
+import { setYoloMode } from "../../../../redux/slices/uiSlice";
 import { ToolTip } from "../../../gui/Tooltip";
 import HoverItem from "../../InputToolbar/HoverItem";
 
@@ -34,6 +36,7 @@ export function BlockSettingsTopToolbar() {
   );
   const hasActiveContent =
     pendingToolCalls.length > 0 || callingToolCalls.length > 0;
+  const yoloMode = useAppSelector((state) => state.ui.yoloMode);
 
   const shouldShowError = configError && configError?.length > 0;
 
@@ -116,11 +119,28 @@ export function BlockSettingsTopToolbar() {
         )}
       </div>
 
-      <ToolTip place="top" content="Select Config">
+      <div className="flex items-center gap-1">
+        <ToolTip content={yoloMode ? "Disable YOLO mode" : "Enable YOLO mode"}>
+          <HoverItem
+            onClick={() => dispatch(setYoloMode(!yoloMode))}
+            px={2}
+          >
+            <BoltIcon
+              className={`h-3 w-3 ${
+                yoloMode
+                  ? "animate-pulse text-amber-400"
+                  : "text-description-muted hover:brightness-125"
+              }`}
+            />
+          </HoverItem>
+        </ToolTip>
+
+        <ToolTip place="top" content="Select Config">
         <div>
           <AssistantAndOrgListbox variant="lump" />
         </div>
-      </ToolTip>
+        </ToolTip>
+      </div>
     </div>
   );
 }

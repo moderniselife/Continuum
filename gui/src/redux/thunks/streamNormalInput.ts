@@ -315,12 +315,14 @@ export const streamNormalInput = createAsyncThunk<
     }
     const generatedCalls3 = selectPendingToolCalls(state3);
     const toolPolicies = state3.ui.toolSettings;
+    const yoloMode = state3.ui.yoloMode;
     const policies = await evaluateToolPolicies(
       dispatch,
       extra.ideMessenger,
       activeTools,
       generatedCalls3,
       toolPolicies,
+      yoloMode,
     );
     const autoApprovedPolicies = policies.filter(
       ({ policy }) => policy === "allowedWithoutPermission",

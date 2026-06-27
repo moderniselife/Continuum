@@ -1,7 +1,9 @@
+import { BoltIcon } from "@heroicons/react/24/solid";
 import { useAppDispatch, useAppSelector } from "../../../../redux/hooks";
 import { selectPendingToolCalls } from "../../../../redux/selectors/selectToolCalls";
 import { callToolById } from "../../../../redux/thunks/callToolById";
 import { cancelToolCallThunk } from "../../../../redux/thunks/cancelToolCall";
+import { setYoloMode } from "../../../../redux/slices/uiSlice";
 import { getAltKeyLabel, getMetaKeyLabel, isJetBrains } from "../../../../util";
 import { Button } from "../../../ui";
 import { useMainEditor } from "../../TipTapEditor";
@@ -37,6 +39,21 @@ export function PendingToolCallToolbar() {
 
   return (
     <div className="flex w-full flex-col pb-0.5">
+      <div className="flex items-center justify-end pb-0.5">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-description-muted font-medium text-amber-400 hover:text-amber-300"
+          onClick={() => {
+            dispatch(setYoloMode(true));
+            pendingToolCalls.forEach((tc) => handleAccept(tc.toolCallId));
+          }}
+          data-testid="yolo-mode-button"
+        >
+          <BoltIcon className="mr-1 h-3 w-3" />
+          <span>YOLO</span>
+        </Button>
+      </div>
       {pendingToolCalls.map((toolCall, index) => (
         <div
           key={toolCall.toolCallId}
