@@ -227,10 +227,35 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
 
     try {
       const result = await listener(msg);
-      if (result !== undefined) {
+
+      // Handle async generator responses (e.g. llm/streamChat)
+      if (result && typeof result[Symbol.asyncIterator] === "function") {
+        let next = await result.next();
+        while (!next.done) {
+          const streamResponse: Message = {
+            messageType: msg.messageType,
+            data: { done: false, content: next.value, status: "success" },
+            messageId: msg.messageId,
+          };
+          if (this.ws.readyState === this.ws.OPEN) {
+            this.ws.send(JSON.stringify(streamResponse));
+          }
+          next = await result.next();
+        }
+        // Final message
+        const finalResponse: Message = {
+          messageType: msg.messageType,
+          data: { done: true, content: next.value, status: "success" },
+          messageId: msg.messageId,
+        };
+        if (this.ws.readyState === this.ws.OPEN) {
+          this.ws.send(JSON.stringify(finalResponse));
+        }
+      } else {
+        // Regular response — wrap in WebviewSingleMessage format
         const response: Message = {
           messageType: msg.messageType,
-          data: result,
+          data: { done: true, content: result, status: "success" },
           messageId: msg.messageId,
         };
         if (this.ws.readyState === this.ws.OPEN) {
@@ -244,7 +269,7 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
       );
       const errorResponse: Message = {
         messageType: msg.messageType,
-        data: { error: (error as Error).message },
+        data: { done: true, error: (error as Error).message, status: "error" },
         messageId: msg.messageId,
       };
       if (this.ws.readyState === this.ws.OPEN) {
