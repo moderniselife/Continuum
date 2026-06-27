@@ -53,7 +53,7 @@
   "activationEvents": [
     "onUri",
     "onStartupFinished",
-    "onView:continueGUIView"
+    "onView:continuumGUIView"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -155,75 +155,75 @@
         "command": "continuum.applyCodeFromChat",
         "category": "Continuum",
         "title": "Apply code from chat",
-        "group": "Continue"
+        "group": "Continuum"
       },
       {
         "command": "continuum.acceptDiff",
         "category": "Continuum",
         "title": "Accept Diff",
-        "group": "Continue"
+        "group": "Continuum"
       },
       {
         "command": "continuum.rejectDiff",
         "category": "Continuum",
         "title": "Reject Diff",
-        "group": "Continue",
+        "group": "Continuum",
         "icon": "$(stop)"
       },
       {
         "command": "continuum.acceptVerticalDiffBlock",
         "category": "Continuum",
         "title": "Accept Vertical Diff Block",
-        "group": "Continue"
+        "group": "Continuum"
       },
       {
         "command": "continuum.rejectVerticalDiffBlock",
         "category": "Continuum",
         "title": "Reject Vertical Diff Block",
-        "group": "Continue"
+        "group": "Continuum"
       },
       {
         "command": "continuum.focusEdit",
         "category": "Continuum",
         "title": "Add to Edit",
-        "group": "Continue"
+        "group": "Continuum"
       },
       {
         "command": "continuum.focusContinueInput",
         "category": "Continuum",
         "title": "Add Highlighted Code to Context and Clear Chat",
-        "group": "Continue"
+        "group": "Continuum"
       },
       {
         "command": "continuum.focusContinueInputWithoutClear",
         "category": "Continuum",
         "title": "Add to Chat",
-        "group": "Continue"
+        "group": "Continuum"
       },
       {
         "command": "continuum.debugTerminal",
         "category": "Continuum",
         "title": "Debug Terminal",
-        "group": "Continue"
+        "group": "Continuum"
       },
       {
         "command": "continuum.exitEditMode",
         "category": "Continuum",
         "title": "Exit Edit Mode",
-        "group": "Continue"
+        "group": "Continuum"
       },
       {
         "command": "continuum.openConfigPage",
         "category": "Continuum",
         "title": "Open Settings",
         "icon": "$(gear)",
-        "group": "Continue"
+        "group": "Continuum"
       },
       {
         "command": "continuum.toggleTabAutocompleteEnabled",
         "category": "Continuum",
         "title": "Toggle Autocomplete Enabled",
-        "group": "Continue"
+        "group": "Continuum"
       },
       {
         "command": "continuum.forceAutocomplete",
@@ -234,112 +234,112 @@
         "command": "continuum.selectFilesAsContext",
         "category": "Continuum",
         "title": "Select Files as Context",
-        "group": "Continue"
+        "group": "Continuum"
       },
       {
         "command": "continuum.newSession",
         "category": "Continuum",
         "title": "New Session",
         "icon": "$(add)",
-        "group": "Continue"
+        "group": "Continuum"
       },
       {
         "command": "continuum.shareSession",
         "category": "Continuum",
         "title": "Share Current Chat Session as Markdown",
-        "group": "Continue"
+        "group": "Continuum"
       },
       {
         "command": "continuum.viewHistory",
         "category": "Continuum",
         "title": "View History",
         "icon": "$(history)",
-        "group": "Continue"
+        "group": "Continuum"
       },
       {
         "command": "continuum.viewLogs",
         "category": "Continuum",
         "title": "View Logs",
-        "group": "Continue"
+        "group": "Continuum"
       },
       {
         "command": "continuum.clearConsole",
         "category": "Continuum",
         "title": "Clear Console",
         "icon": "$(clear-all)",
-        "group": "Continue"
+        "group": "Continuum"
       },
       {
         "command": "continuum.navigateTo",
         "category": "Continuum",
         "title": "Navigate to a path",
-        "group": "Continue"
+        "group": "Continuum"
       },
       {
         "command": "continuum.writeCommentsForCode",
         "category": "Continuum",
         "title": "Write Comments for this Code",
-        "group": "Continue"
+        "group": "Continuum"
       },
       {
         "command": "continuum.writeDocstringForCode",
         "category": "Continuum",
         "title": "Write a Docstring for this Code",
-        "group": "Continue"
+        "group": "Continuum"
       },
       {
         "command": "continuum.fixCode",
         "category": "Continuum",
         "title": "Fix this Code",
-        "group": "Continue"
+        "group": "Continuum"
       },
       {
         "command": "continuum.optimizeCode",
         "category": "Continuum",
         "title": "Optimize this Code",
-        "group": "Continue"
+        "group": "Continuum"
       },
       {
         "command": "continuum.fixGrammar",
         "category": "Continuum",
         "title": "Fix Grammar / Spelling",
-        "group": "Continue"
+        "group": "Continuum"
       },
       {
         "command": "continuum.codebaseForceReIndex",
         "category": "Continuum",
         "title": "Codebase Force Re-Index",
-        "group": "Continue"
+        "group": "Continuum"
       },
       {
         "command": "continuum.rebuildCodebaseIndex",
         "category": "Continuum",
         "title": "Rebuild codebase index",
-        "group": "Continue"
+        "group": "Continuum"
       },
       {
         "command": "continuum.docsIndex",
         "category": "Continuum",
         "title": "Docs Index",
-        "group": "Continue"
+        "group": "Continuum"
       },
       {
         "command": "continuum.docsReIndex",
         "category": "Continuum",
         "title": "Docs Force Re-Index",
-        "group": "Continue"
+        "group": "Continuum"
       },
       {
         "command": "continuum.focusContinueInput",
         "category": "Continuum",
         "title": "Focus Continuum Chat",
-        "group": "Continue"
+        "group": "Continuum"
       },
       {
         "command": "continuum.enterEnterpriseLicenseKey",
         "category": "Continuum",
         "title": "Enter Enterprise License Key",
-        "group": "Continue"
+        "group": "Continuum"
       },
       {
         "command": "continuum.toggleNextEditEnabled",
@@ -374,7 +374,7 @@
         "command": "continuum.openInNewWindow",
         "category": "Continuum",
         "title": "Open in new window",
-        "group": "Continue"
+        "group": "Continuum"
       }
     ],
     "keybindings": [
@@ -497,7 +497,7 @@
     ],
     "submenus": [
       {
-        "id": "continuum.continueSubMenu",
+        "id": "continuum.continuumSubMenu",
         "label": "Continuum"
       }
     ],
@@ -524,25 +524,25 @@
       ],
       "editor/context": [
         {
-          "submenu": "continuum.continueSubMenu",
+          "submenu": "continuum.continuumSubMenu",
           "group": "0_acontinue"
         }
       ],
       "editor/title/run": [
         {
           "command": "continuum.rejectDiff",
-          "group": "Continue",
+          "group": "Continuum",
           "when": "continuum.streamingDiff"
         }
       ],
-      "continuum.continueSubMenu": [
+      "continuum.continuumSubMenu": [
         {
           "command": "continuum.focusContinueInputWithoutClear",
-          "group": "Continue"
+          "group": "Continuum"
         },
         {
           "command": "continuum.focusEdit",
-          "group": "Continue",
+          "group": "Continuum",
           "when": "!editorReadonly"
         }
       ],
@@ -556,34 +556,34 @@
         {
           "command": "continuum.newSession",
           "group": "navigation@1",
-          "when": "view == continue.continueGUIView"
+          "when": "view == continuum.continuumGUIView"
         },
         {
           "command": "continuum.viewHistory",
           "group": "navigation@2",
-          "when": "view == continue.continueGUIView"
+          "when": "view == continuum.continuumGUIView"
         },
         {
           "command": "continuum.openConfigPage",
           "group": "navigation@4",
-          "when": "view == continue.continueGUIView"
+          "when": "view == continuum.continuumGUIView"
         },
         {
           "command": "continuum.clearConsole",
           "group": "navigation@1",
-          "when": "view == continue.continueConsoleView"
+          "when": "view == continuum.continuumConsoleView"
         }
       ],
       "editor/title": [
         {
           "command": "continuum.newSession",
           "group": "navigation@1",
-          "when": "activeWebviewPanelId == continue.continueGUIView"
+          "when": "activeWebviewPanelId == continuum.continuumGUIView"
         },
         {
           "command": "continuum.viewHistory",
           "group": "navigation@2",
-          "when": "activeWebviewPanelId == continue.continueGUIView"
+          "when": "activeWebviewPanelId == continuum.continuumGUIView"
         }
       ],
       "terminal/context": [
@@ -596,8 +596,8 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "continue",
-          "title": "Continue",
+          "id": "continuum",
+          "title": "Continuum",
           "icon": "media/sidebar-icon.png"
         }
       ],
@@ -610,10 +610,10 @@
       ]
     },
     "views": {
-      "continue": [
+      "continuum": [
         {
           "type": "webview",
-          "id": "continuum.continueGUIView",
+          "id": "continuum.continuumGUIView",
           "name": "Continuum",
           "icon": "media/sidebar-icon.png",
           "visibility": "visible"
@@ -622,11 +622,11 @@
       "continueConsole": [
         {
           "type": "webview",
-          "id": "continuum.continueConsoleView",
+          "id": "continuum.continuumConsoleView",
           "name": "Continuum Console",
           "icon": "$(window)",
           "visibility": "visible",
-          "when": "config.continue.enableConsole"
+          "when": "config.continuum.enableConsole"
         }
       ]
     },
