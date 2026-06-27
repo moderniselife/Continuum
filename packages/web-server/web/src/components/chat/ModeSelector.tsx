@@ -22,7 +22,8 @@ const modeColourMap: Record<string, string> = {
 
 const ModeSelector = () => {
   const activeTabId = useChatStore((s) => s.activeTabId);
-  const activeTab = useChatStore((s) => s.getActiveTab());
+  const tabs = useChatStore((s) => s.tabs);
+  const activeTab = tabs.find((t) => t.id === activeTabId);
   const mode = activeTab?.mode ?? "chat";
   const isYolo = activeTab?.yoloMode ?? false;
   const setMode = useChatStore((s) => s.setMode);

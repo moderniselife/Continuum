@@ -11,6 +11,7 @@ import type { ChatMessage } from "@/api/types";
 
 interface MessageBubbleProps {
   message: ChatMessage;
+  isStreaming?: boolean;
 }
 
 const MessageBubble = ({ message }: MessageBubbleProps) => {

@@ -6,6 +6,7 @@
  */
 
 import {
+  useState,
   useRef,
   useCallback,
   type KeyboardEvent,
@@ -20,9 +21,14 @@ const LINE_HEIGHT = 24; // Approximate line height in pixels
 
 const ChatInput = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [value, setValue] = useState("");
   const sendMessage = useChatStore((s) => s.sendMessage);
   const abortStreaming = useChatStore((s) => s.abortStreaming);
-  const activeTab = useChatStore((s) => s.getActiveTab());
+
+  // Select primitive to avoid infinite re-render
+  const tabs = useChatStore((s) => s.tabs);
+  const activeTabId = useChatStore((s) => s.activeTabId);
+  const activeTab = tabs.find((t) => t.id === activeTabId);
   const isStreaming = activeTab?.isStreaming ?? false;
 
   /** Auto-resize the textarea based on content, capped at MAX_ROWS. */
@@ -37,24 +43,23 @@ const ChatInput = () => {
   }, []);
 
   const handleChange = useCallback(
-    (_e: ChangeEvent<HTMLTextAreaElement>) => {
-      // Trigger resize on every change
+    (e: ChangeEvent<HTMLTextAreaElement>) => {
+      setValue(e.target.value);
       handleResize();
     },
     [handleResize],
   );
 
   const handleSend = useCallback(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
+    const trimmed = value.trim();
+    if (!trimmed || isStreaming) return;
 
-    const value = textarea.value.trim();
-    if (!value || isStreaming) return;
-
-    sendMessage(value);
-    textarea.value = "";
-    handleResize();
-  }, [isStreaming, sendMessage, handleResize]);
+    sendMessage(trimmed);
+    setValue("");
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
+  }, [value, isStreaming, sendMessage]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -66,7 +71,7 @@ const ChatInput = () => {
     [handleSend],
   );
 
-  const isEmpty = !textareaRef.current?.value.trim();
+  const isEmpty = !value.trim();
 
   return (
     <div className="bg-bg-surface border-border rounded-2xl border p-3">
@@ -75,6 +80,7 @@ const ChatInput = () => {
         <textarea
           ref={textareaRef}
           rows={1}
+          value={value}
           placeholder="Send a message…"
           onChange={handleChange}
           onKeyDown={handleKeyDown}

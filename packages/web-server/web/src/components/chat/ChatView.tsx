@@ -9,17 +9,24 @@ import { MessageSquare } from "lucide-react";
 import { useChatStore } from "@/stores/chatStore";
 import type { ChatMessage } from "@/api/types";
 import MessageBubble from "./MessageBubble";
+import StreamingDots from "./StreamingDots";
 
 const ChatView = () => {
-  const messages = useChatStore((s) => s.getActiveTab()?.messages ?? []);
+  // Select primitives / arrays from the store — avoid getActiveTab() in selector
+  const tabs = useChatStore((s) => s.tabs);
+  const activeTabId = useChatStore((s) => s.activeTabId);
+  const activeTab = tabs.find((t) => t.id === activeTabId);
+  const messages = activeTab?.messages ?? [];
+  const isStreaming = activeTab?.isStreaming ?? false;
+
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages.length, isStreaming]);
 
-  if (messages.length === 0) {
+  if (messages.length === 0 && !isStreaming) {
     return (
       <div className="text-text-tertiary flex flex-1 flex-col items-center justify-center overflow-y-auto p-4">
         <MessageSquare size={48} className="mb-4 opacity-40" />
@@ -33,9 +40,29 @@ const ChatView = () => {
 
   return (
     <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-4">
-      {messages.map((msg: ChatMessage) => (
-        <MessageBubble key={msg.id} message={msg} />
-      ))}
+      {messages.map((msg: ChatMessage, index: number) => {
+        // The last assistant message during streaming is the one being generated
+        const isLastAssistantStreaming =
+          isStreaming &&
+          msg.role === "assistant" &&
+          index === messages.length - 1;
+
+        return (
+          <MessageBubble
+            key={msg.id ?? `msg-${index}`}
+            message={msg}
+            isStreaming={isLastAssistantStreaming}
+          />
+        );
+      })}
+      {/* Show dots only when streaming but last assistant message has no content yet */}
+      {isStreaming &&
+        messages.length > 0 &&
+        messages[messages.length - 1]?.content === "" && (
+          <div className="bg-bg-surface animate-fade-in rounded-2xl p-4">
+            <StreamingDots />
+          </div>
+        )}
       <div ref={bottomRef} />
     </div>
   );

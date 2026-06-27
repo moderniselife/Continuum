@@ -19,8 +19,16 @@ const MODE_COLOUR: Record<string, string> = {
 function StatusBar() {
   const status = useConnectionStore((s) => s.status);
   const isConnected = status === "connected";
-  const mode = useChatStore((s) => s.getActiveTab()?.mode ?? "chat");
-  const selectedModel = useConfigStore((s) => s.getSelectedModel());
+
+  // Select primitives to avoid infinite re-renders (no new object refs)
+  const tabs = useChatStore((s) => s.tabs);
+  const activeTabId = useChatStore((s) => s.activeTabId);
+  const activeTab = tabs.find((t) => t.id === activeTabId);
+  const mode = activeTab?.mode ?? "chat";
+
+  const selectedModelId = useConfigStore((s) => s.selectedModelId);
+  const models = useConfigStore((s) => s.models);
+  const selectedModel = models.find((m) => m.id === selectedModelId);
   const modelName = selectedModel?.name ?? "";
 
   return (

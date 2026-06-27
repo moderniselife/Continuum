@@ -22,7 +22,7 @@ import type {
 const AUTH_TOKEN_KEY = "continuum_auth_token";
 
 /** Base path for all REST endpoints. */
-const API_BASE = "/api";
+const API_BASE = "/api/v1";
 
 // ---------------------------------------------------------------------------
 // Internal helpers
