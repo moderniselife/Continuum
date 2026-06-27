@@ -77,6 +77,31 @@ router.get("/sessions", (_req: Request, res: Response) => {
       return;
     }
 
+    // Read the sessions.json index file for metadata (dateCreated, etc.)
+    // that isn't stored in the individual session files.
+    const indexPath = path.join(sessionsDir, "sessions.json");
+    let indexMap = new Map<
+      string,
+      { dateCreated?: string; messageCount?: number }
+    >();
+    if (fs.existsSync(indexPath)) {
+      try {
+        const indexData = JSON.parse(fs.readFileSync(indexPath, "utf-8"));
+        if (Array.isArray(indexData)) {
+          for (const entry of indexData) {
+            if (entry.sessionId) {
+              indexMap.set(entry.sessionId, {
+                dateCreated: entry.dateCreated,
+                messageCount: entry.messageCount,
+              });
+            }
+          }
+        }
+      } catch {
+        // Index file is malformed — continue without it.
+      }
+    }
+
     const files = fs
       .readdirSync(sessionsDir)
       .filter((f) => {
@@ -91,35 +116,46 @@ router.get("/sessions", (_req: Request, res: Response) => {
 
     const sessions = files.map((file) => {
       const filePath = path.join(sessionsDir, file);
+      const sessionId = path.basename(file, ".json");
+      const indexEntry = indexMap.get(sessionId);
+
       try {
         const data = JSON.parse(fs.readFileSync(filePath, "utf-8"));
         const historyLen = Array.isArray(data.history)
           ? data.history.length
           : 0;
 
+        // dateCreated is in the index file as a ms-since-epoch string
+        const dateCreatedMs = data.dateCreated ?? indexEntry?.dateCreated;
+        const createdAt = dateCreatedMs
+          ? new Date(Number(dateCreatedMs)).toISOString()
+          : null;
+
         return {
-          id: data.sessionId ?? path.basename(file, ".json"),
+          id: data.sessionId ?? sessionId,
           title:
             data.title && data.title !== ""
               ? data.title
-              : `Session ${path.basename(file, ".json").slice(0, 8)}`,
-          createdAt: data.dateCreated
-            ? new Date(Number(data.dateCreated)).toISOString()
-            : null,
+              : `Session ${sessionId.slice(0, 8)}`,
+          createdAt,
           lastModified: fs.statSync(filePath).mtime.toISOString(),
           messageCount: historyLen,
           mode: data.mode ?? "chat",
           workspaceDirectory: data.workspaceDirectory ?? null,
+          chatModelTitle: data.chatModelTitle ?? null,
         };
       } catch {
         return {
-          id: path.basename(file, ".json"),
-          title: `Session ${path.basename(file, ".json").slice(0, 8)}`,
-          createdAt: null,
+          id: sessionId,
+          title: `Session ${sessionId.slice(0, 8)}`,
+          createdAt: indexEntry?.dateCreated
+            ? new Date(Number(indexEntry.dateCreated)).toISOString()
+            : null,
           lastModified: fs.statSync(filePath).mtime.toISOString(),
           messageCount: 0,
           mode: "chat",
           workspaceDirectory: null,
+          chatModelTitle: null,
         };
       }
     });
