@@ -250,11 +250,12 @@ export function getTsconfig(filePath?: string): Promise<TsconfigResult> {
 /** Batch-resolve type declarations for a list of import specifiers. */
 export function resolveTypes(
   imports: string[],
+  sourcePath?: string,
   dir?: string,
 ): Promise<TypesResolveResult> {
   return apiFetch<TypesResolveResult>("/types/resolve", {
     method: "POST",
-    body: JSON.stringify({ imports, dir }),
+    body: JSON.stringify({ imports, sourcePath, dir }),
   });
 }
 

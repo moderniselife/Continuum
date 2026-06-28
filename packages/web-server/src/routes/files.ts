@@ -1039,7 +1039,8 @@ export function createFileRoutes(webIde: WebIDE): Router {
   router.get("/types/package", async (req: Request, res: Response) => {
     try {
       const packageName = req.query.name as string;
-      const baseDir =
+      const sourceFile = req.query.source as string | undefined;
+      const workspaceRoot =
         (req.query.dir as string) || (await getWorkspaceDirs())[0];
 
       if (!packageName) {
@@ -1049,51 +1050,60 @@ export function createFileRoutes(webIde: WebIDE): Router {
 
       const declarations: Array<{ path: string; content: string }> = [];
 
-      // Strategy 1: Check @types/<package>
-      const atTypesDir = path.join(
-        baseDir,
-        "node_modules",
-        "@types",
-        packageName.replace(/^@/, "").replace(/\//, "__"),
+      // Walk up from source file (or workspace root) to find node_modules
+      const nodeModulesDirs = findNodeModulesDirs(
+        sourceFile ? path.dirname(sourceFile) : workspaceRoot,
+        workspaceRoot,
       );
-      if (fs.existsSync(atTypesDir)) {
-        collectDeclarationFiles(atTypesDir, declarations, 5);
-      }
 
-      // Strategy 2: Check package's own types (package.json "types" or "typings" field)
-      const pkgDir = path.join(baseDir, "node_modules", packageName);
-      const pkgJsonPath = path.join(pkgDir, "package.json");
-      if (fs.existsSync(pkgJsonPath)) {
-        try {
-          const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
-          const typesEntry =
-            pkgJson.types ||
-            pkgJson.typings ||
-            pkgJson.main?.replace(/\.js$/, ".d.ts");
-          if (typesEntry) {
-            const typesPath = path.join(pkgDir, typesEntry);
-            if (fs.existsSync(typesPath)) {
-              declarations.push({
-                path: typesPath,
-                content: fs.readFileSync(typesPath, "utf-8"),
-              });
-            }
-          }
-        } catch {
-          // Ignore malformed package.json
+      for (const nmDir of nodeModulesDirs) {
+        if (declarations.length > 0) break;
+
+        // Strategy 1: Check @types/<package>
+        const atTypesDir = path.join(
+          nmDir,
+          "@types",
+          packageName.replace(/^@/, "").replace(/\//, "__"),
+        );
+        if (fs.existsSync(atTypesDir)) {
+          collectDeclarationFiles(atTypesDir, declarations, 5);
         }
-      }
 
-      // Strategy 3: Look for index.d.ts in the package root
-      const indexDts = path.join(pkgDir, "index.d.ts");
-      if (
-        fs.existsSync(indexDts) &&
-        !declarations.some((d) => d.path === indexDts)
-      ) {
-        declarations.push({
-          path: indexDts,
-          content: fs.readFileSync(indexDts, "utf-8"),
-        });
+        // Strategy 2: Check package's own types (package.json "types" or "typings" field)
+        const pkgDir = path.join(nmDir, packageName);
+        const pkgJsonPath = path.join(pkgDir, "package.json");
+        if (fs.existsSync(pkgJsonPath)) {
+          try {
+            const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
+            const typesEntry =
+              pkgJson.types ||
+              pkgJson.typings ||
+              pkgJson.main?.replace(/\.js$/, ".d.ts");
+            if (typesEntry) {
+              const typesPath = path.join(pkgDir, typesEntry);
+              if (fs.existsSync(typesPath)) {
+                declarations.push({
+                  path: typesPath,
+                  content: fs.readFileSync(typesPath, "utf-8"),
+                });
+              }
+            }
+          } catch {
+            // Ignore malformed package.json
+          }
+        }
+
+        // Strategy 3: Look for index.d.ts in the package root
+        const indexDts = path.join(pkgDir, "index.d.ts");
+        if (
+          fs.existsSync(indexDts) &&
+          !declarations.some((d) => d.path === indexDts)
+        ) {
+          declarations.push({
+            path: indexDts,
+            content: fs.readFileSync(indexDts, "utf-8"),
+          });
+        }
       }
 
       res.json({
@@ -1118,15 +1128,23 @@ export function createFileRoutes(webIde: WebIDE): Router {
    */
   router.post("/types/resolve", async (req: Request, res: Response) => {
     try {
-      const { imports, dir } = req.body as {
+      const { imports, dir, sourcePath } = req.body as {
         imports: string[];
         dir?: string;
+        sourcePath?: string;
       };
-      const baseDir = dir || (await getWorkspaceDirs())[0];
+      const workspaceRoot = dir || (await getWorkspaceDirs())[0];
       const results: Record<
         string,
         Array<{ path: string; content: string }>
       > = {};
+
+      // Build the list of node_modules directories to search,
+      // walking upward from the source file (Node.js resolution).
+      const nodeModulesDirs = findNodeModulesDirs(
+        sourcePath ? path.dirname(sourcePath) : workspaceRoot,
+        workspaceRoot,
+      );
 
       for (const specifier of imports ?? []) {
         // Skip relative imports — those are handled by model registration
@@ -1147,28 +1165,58 @@ export function createFileRoutes(webIde: WebIDE): Router {
 
         const declarations: Array<{ path: string; content: string }> = [];
 
-        // Check @types
-        const atTypesDir = path.join(
-          baseDir,
-          "node_modules",
-          "@types",
-          pkgName.replace(/^@/, "").replace(/\//, "__"),
-        );
-        if (fs.existsSync(atTypesDir)) {
-          collectDeclarationFiles(atTypesDir, declarations, 3);
-        }
+        // Search each node_modules directory (nearest first)
+        for (const nmDir of nodeModulesDirs) {
+          if (declarations.length > 0) break; // Found it, stop looking
 
-        // Check package's own types
-        const pkgDir = path.join(baseDir, "node_modules", pkgName);
-        const indexDts = path.join(pkgDir, "index.d.ts");
-        if (
-          fs.existsSync(indexDts) &&
-          !declarations.some((d) => d.path === indexDts)
-        ) {
-          declarations.push({
-            path: indexDts,
-            content: fs.readFileSync(indexDts, "utf-8"),
-          });
+          // Check @types/<package>
+          const atTypesDir = path.join(
+            nmDir,
+            "@types",
+            pkgName.replace(/^@/, "").replace(/\//, "__"),
+          );
+          if (fs.existsSync(atTypesDir)) {
+            collectDeclarationFiles(atTypesDir, declarations, 3);
+          }
+
+          // Check package's own types (package.json "types"/"typings" field)
+          const pkgDir = path.join(nmDir, pkgName);
+          const pkgJsonPath = path.join(pkgDir, "package.json");
+          if (fs.existsSync(pkgJsonPath)) {
+            try {
+              const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
+              const typesEntry =
+                pkgJson.types ||
+                pkgJson.typings ||
+                pkgJson.main?.replace(/\.js$/, ".d.ts");
+              if (typesEntry) {
+                const typesPath = path.join(pkgDir, typesEntry);
+                if (
+                  fs.existsSync(typesPath) &&
+                  !declarations.some((d) => d.path === typesPath)
+                ) {
+                  declarations.push({
+                    path: typesPath,
+                    content: fs.readFileSync(typesPath, "utf-8"),
+                  });
+                }
+              }
+            } catch {
+              // Ignore malformed package.json
+            }
+          }
+
+          // Check index.d.ts in the package root
+          const indexDts = path.join(pkgDir, "index.d.ts");
+          if (
+            fs.existsSync(indexDts) &&
+            !declarations.some((d) => d.path === indexDts)
+          ) {
+            declarations.push({
+              path: indexDts,
+              content: fs.readFileSync(indexDts, "utf-8"),
+            });
+          }
         }
 
         if (declarations.length > 0) {
@@ -1388,4 +1436,36 @@ function tryResolveWithExtensions(
     }
   }
   return null;
+}
+
+/**
+ * Walks upward from `startDir` to `rootDir`, collecting all `node_modules`
+ * directories found along the way. Also checks for bun's hoisted store
+ * at `node_modules/.bun/node_modules`.
+ *
+ * Returns directories in nearest-first order, matching Node.js resolution.
+ */
+function findNodeModulesDirs(startDir: string, rootDir: string): string[] {
+  const dirs: string[] = [];
+  let dir = path.resolve(startDir);
+  const root = path.resolve(rootDir);
+
+  while (dir.length >= root.length) {
+    const nmDir = path.join(dir, "node_modules");
+    if (fs.existsSync(nmDir)) {
+      dirs.push(nmDir);
+
+      // Also check bun's hoisted module store
+      const bunHoisted = path.join(nmDir, ".bun", "node_modules");
+      if (fs.existsSync(bunHoisted)) {
+        dirs.push(bunHoisted);
+      }
+    }
+
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+
+  return dirs;
 }

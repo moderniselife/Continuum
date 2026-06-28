@@ -100,7 +100,7 @@ export function EditorPanel() {
     loadProjectTsconfig(monaco, activeFile.path);
 
     // Auto-load type declarations for imported packages
-    loadTypesForFile(monaco, activeFile.content);
+    loadTypesForFile(monaco, activeFile.content, activeFile.path);
 
     // Auto-resolve and register relative/alias imports for cross-file IntelliSense
     loadRelativeImports(monaco, activeFile.path, activeFile.content);
@@ -252,6 +252,7 @@ async function loadRelativeImports(
 async function loadTypesForFile(
   monaco: Monaco,
   content: string,
+  sourcePath?: string,
 ): Promise<void> {
   try {
     const imports = extractImports(content);
@@ -268,7 +269,8 @@ async function loadTypesForFile(
     }
 
     const { results } = await resolveTypes(
-      unloaded.map((pkg) => pkg), // Send package names as import specifiers
+      unloaded.map((pkg) => pkg),
+      sourcePath,
     );
 
     for (const [_pkg, declarations] of Object.entries(results)) {
