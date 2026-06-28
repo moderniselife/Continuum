@@ -117,3 +117,70 @@ export function searchFiles(options: SearchOptions): Promise<SearchResponse> {
 
   return apiFetch<SearchResponse>(`/files/search?${params.toString()}`);
 }
+
+// ---------------------------------------------------------------------------
+// Replace types
+// ---------------------------------------------------------------------------
+
+export interface ReplaceInFileRequest {
+  filePath: string;
+  line: number;
+  searchText: string;
+  replaceText: string;
+  caseSensitive?: boolean;
+  regex?: boolean;
+}
+
+export interface ReplaceInFileResponse {
+  replaced: boolean;
+  newContent?: string;
+}
+
+export interface ReplaceAllRequest {
+  searchText: string;
+  replaceText: string;
+  caseSensitive?: boolean;
+  regex?: boolean;
+  include?: string;
+  exclude?: string;
+}
+
+export interface ReplaceAllResponse {
+  filesModified: number;
+  replacementsCount: number;
+  files: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Replace API
+// ---------------------------------------------------------------------------
+
+/**
+ * Replace a single match within a specific file at the given line.
+ *
+ * @param options - The file path, line number, search/replace text, and options.
+ * @returns Whether the replacement was made and the new file content.
+ */
+export function replaceInFile(
+  options: ReplaceInFileRequest,
+): Promise<ReplaceInFileResponse> {
+  return apiFetch<ReplaceInFileResponse>("/files/replace", {
+    method: "POST",
+    body: JSON.stringify(options),
+  });
+}
+
+/**
+ * Replace all occurrences of a search term across the entire workspace.
+ *
+ * @param options - The search/replace text, case sensitivity, regex mode, and glob filters.
+ * @returns The number of files modified, total replacements, and list of modified file paths.
+ */
+export function replaceAll(
+  options: ReplaceAllRequest,
+): Promise<ReplaceAllResponse> {
+  return apiFetch<ReplaceAllResponse>("/files/replace-all", {
+    method: "POST",
+    body: JSON.stringify(options),
+  });
+}

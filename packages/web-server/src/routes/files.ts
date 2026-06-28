@@ -572,6 +572,305 @@ export function createFileRoutes(webIde: WebIDE): Router {
     }
   });
 
+  // ============================================================
+  // Replace Operations
+  // ============================================================
+
+  /**
+   * POST /files/replace
+   * Replaces a single match within a specific file at a given line.
+   *
+   * Body: { filePath, line, searchText, replaceText, caseSensitive?, regex? }
+   * Response: { replaced, newContent? }
+   */
+  router.post("/files/replace", async (req: Request, res: Response) => {
+    try {
+      const {
+        filePath,
+        line,
+        searchText,
+        replaceText,
+        caseSensitive = false,
+        regex = false,
+      } = req.body as {
+        filePath?: string;
+        line?: number;
+        searchText?: string;
+        replaceText?: string;
+        caseSensitive?: boolean;
+        regex?: boolean;
+      };
+
+      if (!searchText || typeof replaceText !== "string") {
+        res
+          .status(400)
+          .json({ error: "searchText and replaceText are required" });
+        return;
+      }
+
+      if (!line || typeof line !== "number") {
+        res.status(400).json({ error: "line must be a number" });
+        return;
+      }
+
+      const resolved = await validateRequestPath(filePath, res);
+      if (resolved === null) return;
+
+      if (!fs.existsSync(resolved)) {
+        res.status(404).json({ error: "File not found" });
+        return;
+      }
+
+      const content = fs.readFileSync(resolved, "utf-8");
+      const lines = content.split("\n");
+      const lineIndex = line - 1; // Convert to 0-indexed
+
+      if (lineIndex < 0 || lineIndex >= lines.length) {
+        res.status(400).json({ error: "Line number out of range" });
+        return;
+      }
+
+      const targetLine = lines[lineIndex];
+
+      // Build the search pattern for the specific line
+      let replaced = false;
+      let newLine: string;
+
+      if (regex) {
+        const flags = caseSensitive ? "" : "i";
+        try {
+          const pattern = new RegExp(searchText, flags);
+          if (pattern.test(targetLine)) {
+            newLine = targetLine.replace(pattern, replaceText);
+            replaced = true;
+          } else {
+            newLine = targetLine;
+          }
+        } catch {
+          res.status(400).json({ error: "Invalid regular expression" });
+          return;
+        }
+      } else {
+        // Literal string replacement
+        let matchIndex: number;
+        if (caseSensitive) {
+          matchIndex = targetLine.indexOf(searchText);
+        } else {
+          matchIndex = targetLine
+            .toLowerCase()
+            .indexOf(searchText.toLowerCase());
+        }
+
+        if (matchIndex >= 0) {
+          newLine =
+            targetLine.slice(0, matchIndex) +
+            replaceText +
+            targetLine.slice(matchIndex + searchText.length);
+          replaced = true;
+        } else {
+          newLine = targetLine;
+        }
+      }
+
+      if (replaced) {
+        lines[lineIndex] = newLine;
+        const newContent = lines.join("\n");
+        fs.writeFileSync(resolved, newContent, "utf-8");
+        res.json({ replaced: true, newContent });
+      } else {
+        res.json({ replaced: false });
+      }
+    } catch (error) {
+      res.status(500).json({
+        error: "Failed to replace in file",
+        details: (error as Error).message,
+      });
+    }
+  });
+
+  /**
+   * POST /files/replace-all
+   * Replaces all occurrences of a search term across workspace files.
+   *
+   * Body: { searchText, replaceText, caseSensitive?, regex?, include?, exclude? }
+   * Response: { filesModified, replacementsCount, files[] }
+   */
+  router.post("/files/replace-all", async (req: Request, res: Response) => {
+    try {
+      const {
+        searchText,
+        replaceText,
+        caseSensitive = false,
+        regex = false,
+        include,
+        exclude,
+      } = req.body as {
+        searchText?: string;
+        replaceText?: string;
+        caseSensitive?: boolean;
+        regex?: boolean;
+        include?: string;
+        exclude?: string;
+      };
+
+      if (!searchText || typeof replaceText !== "string") {
+        res
+          .status(400)
+          .json({ error: "searchText and replaceText are required" });
+        return;
+      }
+
+      const dirs = await getWorkspaceDirs();
+      if (dirs.length === 0) {
+        res.json({ filesModified: 0, replacementsCount: 0, files: [] });
+        return;
+      }
+
+      const cwd = dirs[0];
+
+      // First, find all matching files using rg or grep
+      let useRg = false;
+      try {
+        await execFileAsync("rg", ["--version"], { timeout: 3_000 });
+        useRg = true;
+      } catch {
+        // ripgrep not available — use grep
+      }
+
+      // Collect matching files with their line numbers
+      const matchingFiles = new Set<string>();
+
+      if (useRg) {
+        const args = ["--files-with-matches", "--no-heading", "--color=never"];
+
+        if (!caseSensitive) args.push("--ignore-case");
+        if (!regex) args.push("--fixed-strings");
+
+        if (include) {
+          for (const g of include.split(",")) {
+            args.push("--glob", g.trim());
+          }
+        }
+        if (exclude) {
+          for (const g of exclude.split(",")) {
+            args.push("--glob", `!${g.trim()}`);
+          }
+        }
+
+        args.push("--", searchText, ".");
+
+        try {
+          const { stdout } = await execFileAsync("rg", args, {
+            cwd,
+            timeout: 30_000,
+            maxBuffer: 10 * 1024 * 1024,
+          });
+
+          for (const line of stdout.split("\n").filter((l) => l.length > 0)) {
+            const filePath = line.startsWith("./")
+              ? path.join(cwd, line.slice(2))
+              : path.join(cwd, line);
+            matchingFiles.add(filePath);
+          }
+        } catch (error) {
+          const err = error as { code?: number };
+          if (err.code !== 1) throw error;
+        }
+      } else {
+        const args = ["-rlI"];
+
+        if (!caseSensitive) args.push("-i");
+        if (!regex) args.push("-F");
+
+        if (include) {
+          for (const g of include.split(",")) {
+            args.push(`--include=${g.trim()}`);
+          }
+        }
+        if (exclude) {
+          for (const g of exclude.split(",")) {
+            args.push(`--exclude=${g.trim()}`);
+            args.push(`--exclude-dir=${g.trim()}`);
+          }
+        }
+
+        args.push("--", searchText, ".");
+
+        try {
+          const { stdout } = await execFileAsync("grep", args, {
+            cwd,
+            timeout: 30_000,
+            maxBuffer: 10 * 1024 * 1024,
+          });
+
+          for (const line of stdout.split("\n").filter((l) => l.length > 0)) {
+            const filePath = line.startsWith("./")
+              ? path.join(cwd, line.slice(2))
+              : path.join(cwd, line);
+            matchingFiles.add(filePath);
+          }
+        } catch (error) {
+          const err = error as { code?: number };
+          if (err.code !== 1) throw error;
+        }
+      }
+
+      // Perform replacements in each file
+      let filesModified = 0;
+      let replacementsCount = 0;
+      const modifiedFiles: string[] = [];
+
+      // Build the regex pattern for replacements
+      let pattern: RegExp;
+      try {
+        if (regex) {
+          const flags = caseSensitive ? "g" : "gi";
+          pattern = new RegExp(searchText, flags);
+        } else {
+          // Escape special regex characters for literal matching
+          const escaped = searchText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const flags = caseSensitive ? "g" : "gi";
+          pattern = new RegExp(escaped, flags);
+        }
+      } catch {
+        res.status(400).json({ error: "Invalid regular expression" });
+        return;
+      }
+
+      for (const filePath of matchingFiles) {
+        // Validate each file path for security
+        const validationResult = validatePath(filePath, dirs);
+        if ("error" in validationResult) continue;
+
+        try {
+          const content = fs.readFileSync(filePath, "utf-8");
+          const matchCount = (content.match(pattern) || []).length;
+
+          if (matchCount > 0) {
+            const newContent = content.replace(pattern, replaceText);
+            fs.writeFileSync(filePath, newContent, "utf-8");
+            filesModified++;
+            replacementsCount += matchCount;
+            modifiedFiles.push(filePath);
+          }
+        } catch {
+          // Skip files that cannot be read/written (e.g. binary files)
+        }
+      }
+
+      res.json({
+        filesModified,
+        replacementsCount,
+        files: modifiedFiles,
+      });
+    } catch (error) {
+      res.status(500).json({
+        error: "Failed to replace across files",
+        details: (error as Error).message,
+      });
+    }
+  });
+
   /**
    * GET /files/find
    * Finds files matching a glob pattern in the workspace.

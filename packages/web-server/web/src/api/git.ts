@@ -173,3 +173,81 @@ export function getGitDiff(
   const qs = params.toString();
   return gitFetch<GitDiffResponse>(`/diff${qs ? `?${qs}` : ""}`);
 }
+
+// ---------------------------------------------------------------------------
+// Submodule types
+// ---------------------------------------------------------------------------
+
+export type GitSubmoduleStatus = "up-to-date" | "modified" | "uninitialized";
+
+export interface GitSubmodule {
+  name: string;
+  path: string;
+  url: string;
+  commit: string;
+  status: GitSubmoduleStatus;
+  branch?: string;
+}
+
+export interface GitSubmodulesResponse {
+  submodules: GitSubmodule[];
+}
+
+export interface GitSubmoduleDetailResponse {
+  branch: string;
+  files: GitStatusFile[];
+  recentCommits: GitCommit[];
+}
+
+export interface GitSubmoduleCommitResponse {
+  success: boolean;
+  hash?: string;
+  error?: string;
+}
+
+export interface GitSubmoduleUpdateResponse {
+  staged: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Submodule API
+// ---------------------------------------------------------------------------
+
+/** List all git submodules with their current status. */
+export function listSubmodules(): Promise<GitSubmodulesResponse> {
+  return gitFetch<GitSubmodulesResponse>("/submodules");
+}
+
+/** Get detailed status for a single submodule. */
+export function getSubmoduleStatus(
+  name: string,
+): Promise<GitSubmoduleDetailResponse> {
+  return gitFetch<GitSubmoduleDetailResponse>(
+    `/submodules/${encodeURIComponent(name)}/status`,
+  );
+}
+
+/** Commit staged changes within a submodule. */
+export function commitSubmodule(
+  name: string,
+  message: string,
+  files?: string[],
+): Promise<GitSubmoduleCommitResponse> {
+  return gitFetch<GitSubmoduleCommitResponse>(
+    `/submodules/${encodeURIComponent(name)}/commit`,
+    {
+      method: "POST",
+      body: JSON.stringify({ message, files }),
+    },
+  );
+}
+
+/** Stage updated submodule references in the parent repository. */
+export function updateSubmoduleRefs(
+  submodules?: string[],
+): Promise<GitSubmoduleUpdateResponse> {
+  return gitFetch<GitSubmoduleUpdateResponse>("/submodules/update", {
+    method: "POST",
+    body: JSON.stringify({ submodules }),
+  });
+}

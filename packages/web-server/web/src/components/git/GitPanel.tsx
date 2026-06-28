@@ -17,6 +17,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   GitBranch,
   GitCommit as GitCommitIcon,
+  GitFork,
   Plus,
   Minus,
   FileText,
@@ -31,6 +32,7 @@ import {
   FilePlus,
   FileMinus,
   ArrowRightLeft,
+  Upload,
 } from "lucide-react";
 import { useFileStore } from "@/stores/fileStore";
 import {
@@ -39,8 +41,14 @@ import {
   stageFiles,
   unstageFiles,
   createCommit,
+  listSubmodules,
+  getSubmoduleStatus,
+  commitSubmodule,
+  updateSubmoduleRefs,
   type GitStatusFile,
   type GitCommit,
+  type GitSubmodule,
+  type GitSubmoduleDetailResponse,
 } from "@/api/git";
 
 // ---------------------------------------------------------------------------
@@ -230,6 +238,284 @@ function CommitLogItem({ commit }: CommitLogItemProps) {
 }
 
 // ---------------------------------------------------------------------------
+// SubmoduleItem — Expandable submodule row
+// ---------------------------------------------------------------------------
+
+interface SubmoduleItemProps {
+  submodule: GitSubmodule;
+  onRefresh: () => void;
+}
+
+function SubmoduleItem({ submodule, onRefresh }: SubmoduleItemProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [detail, setDetail] = useState<GitSubmoduleDetailResponse | null>(null);
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+  const [commitMsg, setCommitMsg] = useState("");
+  const [isCommitting, setIsCommitting] = useState(false);
+  const [isStaging, setIsStaging] = useState(false);
+  const [feedback, setFeedback] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
+
+  /** Status dot colour based on submodule state. */
+  const statusColour =
+    submodule.status === "up-to-date"
+      ? "#4ade80" // green
+      : submodule.status === "modified"
+        ? "#fbbf24" // amber
+        : "#9ca3af"; // grey — uninitialised
+
+  /** Fetch detailed status when expanding. */
+  const handleToggle = useCallback(async () => {
+    const next = !isExpanded;
+    setIsExpanded(next);
+    if (next && !detail) {
+      setIsLoadingDetail(true);
+      try {
+        const result = await getSubmoduleStatus(submodule.name);
+        setDetail(result);
+      } catch (err) {
+        console.error("Failed to load submodule detail:", err);
+      } finally {
+        setIsLoadingDetail(false);
+      }
+    }
+  }, [isExpanded, detail, submodule.name]);
+
+  /** Commit within the submodule. */
+  const handleCommit = useCallback(async () => {
+    if (!commitMsg.trim()) return;
+    setIsCommitting(true);
+    setFeedback(null);
+    try {
+      const result = await commitSubmodule(submodule.name, commitMsg.trim());
+      if (result.success) {
+        setFeedback({
+          type: "success",
+          message: `Committed ${result.hash ?? ""}`,
+        });
+        setCommitMsg("");
+        // Refresh detail
+        const refreshed = await getSubmoduleStatus(submodule.name);
+        setDetail(refreshed);
+        onRefresh();
+      } else {
+        setFeedback({
+          type: "error",
+          message: result.error ?? "Commit failed",
+        });
+      }
+    } catch (err) {
+      setFeedback({ type: "error", message: (err as Error).message });
+    } finally {
+      setIsCommitting(false);
+      setTimeout(() => setFeedback(null), 4_000);
+    }
+  }, [commitMsg, submodule.name, onRefresh]);
+
+  /** Stage this submodule in the parent repo. */
+  const handleStageInParent = useCallback(async () => {
+    setIsStaging(true);
+    setFeedback(null);
+    try {
+      await updateSubmoduleRefs([submodule.path]);
+      setFeedback({ type: "success", message: "Staged in parent" });
+      onRefresh();
+    } catch (err) {
+      setFeedback({ type: "error", message: (err as Error).message });
+    } finally {
+      setIsStaging(false);
+      setTimeout(() => setFeedback(null), 4_000);
+    }
+  }, [submodule.path, onRefresh]);
+
+  const basename = submodule.path.split("/").pop() ?? submodule.path;
+
+  return (
+    <div className="border-border/50 border-b last:border-b-0">
+      {/* Header row */}
+      <button
+        type="button"
+        onClick={() => void handleToggle()}
+        className="hover:bg-bg-hover flex w-full items-center gap-1.5 px-3 py-1.5 text-left transition-colors"
+      >
+        {isExpanded ? (
+          <ChevronDown size={12} className="text-text-tertiary shrink-0" />
+        ) : (
+          <ChevronRight size={12} className="text-text-tertiary shrink-0" />
+        )}
+
+        {/* Status dot */}
+        <span
+          className="inline-block h-2 w-2 shrink-0 rounded-full"
+          style={{ backgroundColor: statusColour }}
+          title={submodule.status}
+        />
+
+        <GitFork size={12} className="text-text-tertiary shrink-0" />
+        <span className="text-text-primary truncate text-xs font-medium">
+          {basename}
+        </span>
+        <span className="text-text-tertiary truncate text-[10px]">
+          {submodule.path !== basename ? submodule.path : ""}
+        </span>
+
+        {submodule.branch && (
+          <span className="bg-accent-muted text-accent ml-auto shrink-0 rounded-full px-1.5 py-px text-[10px] font-medium">
+            {submodule.branch}
+          </span>
+        )}
+      </button>
+
+      {/* Expanded detail */}
+      {isExpanded && (
+        <div className="bg-bg-hover/30 space-y-2 px-4 pb-3 pt-1">
+          {isLoadingDetail ? (
+            <div className="text-text-tertiary flex items-center gap-2 py-2 text-xs">
+              <Loader2 size={12} className="animate-spin" />
+              Loading submodule details…
+            </div>
+          ) : detail ? (
+            <>
+              {/* Branch & commit info */}
+              <div className="text-text-tertiary flex flex-wrap items-center gap-2 text-[10px]">
+                <span>
+                  Branch:{" "}
+                  <span className="text-text-primary font-medium">
+                    {detail.branch}
+                  </span>
+                </span>
+                <span>·</span>
+                <span className="font-mono">
+                  {submodule.commit.slice(0, 7)}
+                </span>
+              </div>
+
+              {/* Changed files */}
+              {detail.files.length > 0 && (
+                <div>
+                  <p className="text-text-tertiary mb-1 text-[10px] font-semibold uppercase tracking-wider">
+                    Changed Files ({detail.files.length})
+                  </p>
+                  <div className="space-y-0.5">
+                    {detail.files.map((file) => (
+                      <div
+                        key={`${file.path}-${file.staged ? "s" : "u"}`}
+                        className="text-text-primary flex items-center gap-1.5 text-xs"
+                      >
+                        <StatusIcon status={file.status} />
+                        <span className="truncate">{file.path}</span>
+                        <span
+                          className={`ml-auto shrink-0 text-[10px] font-bold ${
+                            file.staged
+                              ? "text-green-400"
+                              : "text-text-tertiary"
+                          }`}
+                        >
+                          {file.staged ? "S" : statusLabel(file.status)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Commit input */}
+              <div className="space-y-1.5">
+                <textarea
+                  placeholder="Submodule commit message…"
+                  value={commitMsg}
+                  onChange={(e) => setCommitMsg(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                      e.preventDefault();
+                      void handleCommit();
+                    }
+                  }}
+                  rows={1}
+                  className="bg-bg-input border-border text-text-primary placeholder:text-text-tertiary w-full resize-none rounded-md border px-2 py-1 text-xs outline-none focus:border-blue-500/40"
+                />
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => void handleCommit()}
+                    disabled={isCommitting || !commitMsg.trim()}
+                    className="bg-accent hover:bg-accent/80 flex items-center gap-1 rounded-md px-2.5 py-1 text-[10px] font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {isCommitting ? (
+                      <Loader2 size={10} className="animate-spin" />
+                    ) : (
+                      <Check size={10} />
+                    )}
+                    Commit Submodule
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => void handleStageInParent()}
+                    disabled={isStaging}
+                    className="text-text-tertiary hover:text-text-primary border-border flex items-center gap-1 rounded-md border px-2.5 py-1 text-[10px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {isStaging ? (
+                      <Loader2 size={10} className="animate-spin" />
+                    ) : (
+                      <Upload size={10} />
+                    )}
+                    Stage in Parent
+                  </button>
+                </div>
+              </div>
+
+              {/* Feedback */}
+              {feedback && (
+                <p
+                  className={`text-[10px] ${
+                    feedback.type === "success"
+                      ? "text-green-400"
+                      : "text-red-400"
+                  }`}
+                >
+                  {feedback.message}
+                </p>
+              )}
+
+              {/* Recent commits */}
+              {detail.recentCommits.length > 0 && (
+                <div>
+                  <p className="text-text-tertiary mb-1 text-[10px] font-semibold uppercase tracking-wider">
+                    Recent Commits
+                  </p>
+                  <div className="space-y-0.5">
+                    {detail.recentCommits.map((c) => (
+                      <div
+                        key={c.hash}
+                        className="text-text-primary flex items-start gap-1.5 text-xs"
+                      >
+                        <GitCommitIcon
+                          size={10}
+                          className="text-text-tertiary mt-0.5 shrink-0"
+                        />
+                        <span className="truncate">{c.message}</span>
+                        <span className="text-text-tertiary ml-auto shrink-0 font-mono text-[10px]">
+                          {c.shortHash}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="text-text-tertiary text-xs">Unable to load details</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // GitPanel (exported)
 // ---------------------------------------------------------------------------
 
@@ -248,6 +534,10 @@ function GitPanel() {
   const [commitError, setCommitError] = useState<string | null>(null);
   const [commitSuccess, setCommitSuccess] = useState<string | null>(null);
 
+  // Submodule state
+  const [submodules, setSubmodules] = useState<GitSubmodule[]>([]);
+  const [showSubmodules, setShowSubmodules] = useState(true);
+
   // Section visibility
   const [showStaged, setShowStaged] = useState(true);
   const [showChanges, setShowChanges] = useState(true);
@@ -265,14 +555,16 @@ function GitPanel() {
     setError(null);
 
     try {
-      const [statusResult, logResult] = await Promise.all([
+      const [statusResult, logResult, submodulesResult] = await Promise.all([
         getGitStatus(),
         getGitLog(20),
+        listSubmodules().catch(() => ({ submodules: [] as GitSubmodule[] })),
       ]);
 
       setBranch(statusResult.branch);
       setFiles(statusResult.files);
       setCommits(logResult.commits);
+      setSubmodules(submodulesResult.submodules);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -594,6 +886,55 @@ function GitPanel() {
                   </div>
                 )}
             </div>
+
+            {/* ── Submodules ─────────────────────────────────────── */}
+            {submodules.length > 0 && (
+              <div className="border-border border-b">
+                <button
+                  type="button"
+                  onClick={() => setShowSubmodules(!showSubmodules)}
+                  className="hover:bg-bg-hover flex w-full items-center gap-1.5 px-3 py-1.5 text-left transition-colors"
+                >
+                  {showSubmodules ? (
+                    <ChevronDown size={12} className="text-text-tertiary" />
+                  ) : (
+                    <ChevronRight size={12} className="text-text-tertiary" />
+                  )}
+                  <GitFork size={12} className="text-text-tertiary" />
+                  <span className="text-text-primary text-xs font-semibold">
+                    Submodules
+                  </span>
+                  <span className="text-text-tertiary text-[10px]">
+                    {submodules.length}
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void refreshStatus();
+                    }}
+                    className="text-text-tertiary hover:text-text-primary ml-auto rounded p-0.5 transition-colors"
+                    title="Refresh submodules"
+                    aria-label="Refresh submodules"
+                  >
+                    <RefreshCw size={10} />
+                  </button>
+                </button>
+
+                {showSubmodules && (
+                  <div>
+                    {submodules.map((sub) => (
+                      <SubmoduleItem
+                        key={sub.path}
+                        submodule={sub}
+                        onRefresh={() => void refreshStatus()}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* ── Commit Log ──────────────────────────────────────── */}
             <div>
