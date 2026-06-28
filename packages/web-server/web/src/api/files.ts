@@ -257,3 +257,29 @@ export function resolveTypes(
     body: JSON.stringify({ imports, dir }),
   });
 }
+
+/** Result of resolving import specifiers to file paths + content. */
+export interface ResolvedImport {
+  specifier: string;
+  path: string;
+  content: string;
+}
+
+export interface ResolveImportsResult {
+  resolved: ResolvedImport[];
+}
+
+/**
+ * Batch-resolve relative and alias import specifiers to absolute file paths
+ * with their content. Used to register imported files with Monaco for
+ * cross-file IntelliSense.
+ */
+export function resolveImports(
+  sourcePath: string,
+  imports: string[],
+): Promise<ResolveImportsResult> {
+  return apiFetch<ResolveImportsResult>("/files/resolve-imports", {
+    method: "POST",
+    body: JSON.stringify({ sourcePath, imports }),
+  });
+}

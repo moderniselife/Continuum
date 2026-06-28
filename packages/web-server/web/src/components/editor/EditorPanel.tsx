@@ -27,7 +27,7 @@ import {
   getPackageName,
   registerTypeDeclarations,
 } from "@/utils/monacoSetup";
-import { resolveTypes } from "@/api/files";
+import { resolveTypes, resolveImports } from "@/api/files";
 
 /** Tracks which packages have already had their types loaded. */
 const loadedPackages = new Set<string>();
@@ -101,6 +101,9 @@ export function EditorPanel() {
 
     // Auto-load type declarations for imported packages
     loadTypesForFile(monaco, activeFile.content);
+
+    // Auto-resolve and register relative/alias imports for cross-file IntelliSense
+    loadRelativeImports(monaco, activeFile.path, activeFile.content);
   }, [activeFilePath, activeFile?.path]);
 
   // Empty state — no files open
@@ -184,6 +187,60 @@ export function EditorPanel() {
       </div>
     </div>
   );
+}
+
+/* ── Auto-resolve relative/alias imports ─────────────────────── */
+
+/** Tracks which source files have already had their imports resolved. */
+const resolvedImportSources = new Set<string>();
+
+/**
+ * Resolves relative and path-alias imports from a file, fetches their
+ * content from the backend, and registers them as extra libs in Monaco
+ * so that cross-file references and IntelliSense work correctly.
+ */
+async function loadRelativeImports(
+  monaco: Monaco,
+  filePath: string,
+  content: string,
+): Promise<void> {
+  if (resolvedImportSources.has(filePath)) return;
+  resolvedImportSources.add(filePath);
+
+  try {
+    const allImports = extractImports(content);
+    // Include both relative imports and path-alias imports (@/, ~/)
+    const resolvableImports = allImports.filter(
+      (imp) =>
+        imp.startsWith("./") ||
+        imp.startsWith("../") ||
+        imp.startsWith("@/") ||
+        imp.startsWith("~/"),
+    );
+
+    if (resolvableImports.length === 0) return;
+
+    const { resolved } = await resolveImports(filePath, resolvableImports);
+
+    for (const { path: resolvedPath, content: fileContent } of resolved) {
+      // Register as a model so Monaco's TS worker can resolve references
+      const lang =
+        resolvedPath.endsWith(".tsx") || resolvedPath.endsWith(".jsx")
+          ? "typescriptreact"
+          : resolvedPath.endsWith(".ts")
+            ? "typescript"
+            : "javascript";
+      getOrCreateModel(monaco, resolvedPath, fileContent, lang);
+    }
+
+    if (resolved.length > 0) {
+      console.info(
+        `[EditorPanel] Auto-registered ${resolved.length} imported files for ${filePath.split("/").pop()}`,
+      );
+    }
+  } catch (err) {
+    console.warn("[EditorPanel] Failed to auto-resolve imports:", err);
+  }
 }
 
 /* ── Auto-load types for imports ─────────────────────────────── */

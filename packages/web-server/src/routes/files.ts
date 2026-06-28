@@ -1185,6 +1185,130 @@ export function createFileRoutes(webIde: WebIDE): Router {
     }
   });
 
+  /**
+   * POST /files/resolve-imports
+   *
+   * Given a source file path and a list of import specifiers, resolves each
+   * to an absolute file path and returns the file content. Handles relative
+   * imports (./  ../), path alias imports (@/  ~/), and tries common
+   * extensions (.ts, .tsx, .js, .jsx, /index.ts, /index.tsx).
+   *
+   * Body: { sourcePath: string, imports: string[] }
+   * Response: { resolved: Array<{ specifier: string, path: string, content: string }> }
+   */
+  router.post("/files/resolve-imports", async (req: Request, res: Response) => {
+    try {
+      const { sourcePath, imports } = req.body as {
+        sourcePath: string;
+        imports: string[];
+      };
+
+      if (!sourcePath || !imports?.length) {
+        return res.json({ resolved: [] });
+      }
+
+      const workspaceDirs = await getWorkspaceDirs();
+      const baseDir = workspaceDirs[0] || "";
+
+      // Try to load tsconfig to resolve path aliases
+      let pathAliases: Record<string, string[]> = {};
+      let tsconfigBaseUrl = ".";
+      try {
+        const tsconfigPath = findTsconfigFor(sourcePath, baseDir);
+        if (tsconfigPath) {
+          const tsconfig = JSON.parse(fs.readFileSync(tsconfigPath, "utf-8"));
+          const tsconfigDir = path.dirname(tsconfigPath);
+          tsconfigBaseUrl = tsconfig.compilerOptions?.baseUrl || ".";
+          pathAliases = tsconfig.compilerOptions?.paths || {};
+          // Resolve baseUrl relative to tsconfig location
+          tsconfigBaseUrl = path.resolve(tsconfigDir, tsconfigBaseUrl);
+        }
+      } catch {
+        // Ignore tsconfig parse errors
+      }
+
+      const sourceDir = path.dirname(sourcePath);
+      const resolved: Array<{
+        specifier: string;
+        path: string;
+        content: string;
+      }> = [];
+
+      const EXTENSIONS = [
+        "",
+        ".ts",
+        ".tsx",
+        ".js",
+        ".jsx",
+        "/index.ts",
+        "/index.tsx",
+        "/index.js",
+        "/index.jsx",
+      ];
+
+      for (const specifier of imports) {
+        let resolvedPath: string | null = null;
+
+        if (specifier.startsWith("./") || specifier.startsWith("../")) {
+          // Relative import — resolve against source directory
+          const base = path.resolve(sourceDir, specifier);
+          resolvedPath = tryResolveWithExtensions(base, EXTENSIONS);
+        } else {
+          // Try path aliases
+          for (const [aliasPattern, aliasPaths] of Object.entries(
+            pathAliases,
+          )) {
+            const aliasPrefix = aliasPattern.replace(/\*$/, "");
+            if (specifier.startsWith(aliasPrefix)) {
+              const remainder = specifier.slice(aliasPrefix.length);
+              for (const ap of aliasPaths) {
+                const aliasBase = ap.replace(/\*$/, "");
+                const candidate = path.resolve(
+                  tsconfigBaseUrl,
+                  aliasBase,
+                  remainder,
+                );
+                resolvedPath = tryResolveWithExtensions(candidate, EXTENSIONS);
+                if (resolvedPath) break;
+              }
+              if (resolvedPath) break;
+            }
+          }
+        }
+
+        if (resolvedPath && fs.existsSync(resolvedPath)) {
+          // Security: ensure it's within the workspace
+          const realPath = fs.realpathSync(resolvedPath);
+          const isInWorkspace = workspaceDirs.some((wd) =>
+            realPath.startsWith(fs.realpathSync(wd)),
+          );
+          if (isInWorkspace) {
+            try {
+              const content = fs.readFileSync(resolvedPath, "utf-8");
+              // Skip very large files (> 100KB)
+              if (content.length <= 100_000) {
+                resolved.push({
+                  specifier,
+                  path: resolvedPath,
+                  content,
+                });
+              }
+            } catch {
+              // Skip unreadable files
+            }
+          }
+        }
+      }
+
+      res.json({ resolved });
+    } catch (error) {
+      res.status(500).json({
+        error: "Failed to resolve imports",
+        details: (error as Error).message,
+      });
+    }
+  });
+
   return router;
 }
 
@@ -1229,4 +1353,39 @@ function collectDeclarationFiles(
   } catch {
     // Skip unreadable directories
   }
+}
+
+/**
+ * Walk up from `filePath` to find the nearest tsconfig.json,
+ * stopping at `rootDir`.
+ */
+function findTsconfigFor(filePath: string, rootDir: string): string | null {
+  let dir = path.dirname(filePath);
+  const root = path.resolve(rootDir);
+
+  while (dir.length >= root.length) {
+    const candidate = path.join(dir, "tsconfig.json");
+    if (fs.existsSync(candidate)) return candidate;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
+
+/**
+ * Try to resolve a base path with common TypeScript/JavaScript extensions.
+ * Returns the first path that exists, or `null`.
+ */
+function tryResolveWithExtensions(
+  basePath: string,
+  extensions: string[],
+): string | null {
+  for (const ext of extensions) {
+    const candidate = basePath + ext;
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+      return candidate;
+    }
+  }
+  return null;
 }
