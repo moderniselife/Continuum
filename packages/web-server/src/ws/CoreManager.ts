@@ -32,7 +32,13 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
   ) {
     this.ws.on("message", (raw: Buffer | string) => {
       try {
-        const msg: Message = JSON.parse(raw.toString());
+        const parsed = JSON.parse(raw.toString());
+        // Normalise: frontend sends { type } but Core expects { messageType }
+        const msg: Message = {
+          messageType: parsed.messageType ?? parsed.type,
+          messageId: parsed.messageId,
+          data: parsed.data,
+        };
         void this.handleIncoming(msg);
       } catch (error) {
         console.error("[WebCoreMessenger] Failed to parse message:", error);
@@ -59,13 +65,14 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
     messageId?: string,
   ): string {
     const id = messageId ?? uuidv4();
-    const msg: Message = {
-      messageType: messageType as string,
+    // Send with `type` (not `messageType`) to match frontend WsResponse format
+    const payload = {
+      type: messageType as string,
       data,
       messageId: id,
     };
     if (this.ws.readyState === this.ws.OPEN) {
-      this.ws.send(JSON.stringify(msg));
+      this.ws.send(JSON.stringify(payload));
     }
     return id;
   }
@@ -131,8 +138,8 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
         },
       });
 
-      const msg: Message = {
-        messageType: messageType as string,
+      const msg = {
+        type: messageType as string,
         data,
         messageId,
       };
@@ -236,6 +243,34 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
   /**
    * Handle incoming messages from the WebSocket client.
    */
+  /**
+   * Send a response to the frontend WebSocket client in the format it expects:
+   * `{ messageId, type, data, streaming?, done?, error? }`
+   */
+  private sendToClient(envelope: {
+    messageType: string;
+    messageId: string;
+    data: unknown;
+    streaming?: boolean;
+    done?: boolean;
+    error?: string;
+  }): void {
+    if (this.ws.readyState !== this.ws.OPEN) return;
+
+    // Map Core's `messageType` → frontend's `type`
+    const payload: Record<string, unknown> = {
+      messageId: envelope.messageId,
+      type: envelope.messageType,
+      data: envelope.data,
+    };
+    if (envelope.streaming !== undefined)
+      payload.streaming = envelope.streaming;
+    if (envelope.done !== undefined) payload.done = envelope.done;
+    if (envelope.error !== undefined) payload.error = envelope.error;
+
+    this.ws.send(JSON.stringify(payload));
+  }
+
   private async handleIncoming(msg: Message): Promise<void> {
     // Check if it's a response to a pending request
     if (this.pendingRequests.has(msg.messageId)) {
@@ -243,6 +278,33 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
       this.pendingRequests.delete(msg.messageId);
       pending.resolve(msg.data);
       return;
+    }
+
+    // -----------------------------------------------------------------------
+    // Translate Web IDE "chat/send" → Core "llm/streamChat"
+    // The Web IDE sends a simplified payload; we convert it to the format
+    // that Core's llm/streamChat handler expects.
+    // -----------------------------------------------------------------------
+    if (msg.messageType === "chat/send") {
+      const chatPayload = msg.data as {
+        message?: { content?: string; context?: unknown[] };
+        sessionId?: string;
+        mode?: string;
+        modelId?: string;
+      };
+
+      const userContent = chatPayload?.message?.content ?? "";
+
+      // Build a ChatMessage array — just the user message for now.
+      // In future, we could maintain server-side session history.
+      const messages = [{ role: "user" as const, content: userContent }];
+
+      // Rewrite the message to look like "llm/streamChat"
+      msg.messageType = "llm/streamChat";
+      msg.data = {
+        messages,
+        completionOptions: {},
+      };
     }
 
     // Route to registered Core handler
@@ -261,49 +323,43 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
       if (result && typeof result[Symbol.asyncIterator] === "function") {
         let next = await result.next();
         while (!next.done) {
-          const streamResponse: Message = {
+          this.sendToClient({
             messageType: msg.messageType,
-            data: { done: false, content: next.value, status: "success" },
             messageId: msg.messageId,
-          };
-          if (this.ws.readyState === this.ws.OPEN) {
-            this.ws.send(JSON.stringify(streamResponse));
-          }
+            data: next.value,
+            streaming: true,
+            done: false,
+          });
           next = await result.next();
         }
         // Final message
-        const finalResponse: Message = {
+        this.sendToClient({
           messageType: msg.messageType,
-          data: { done: true, content: next.value, status: "success" },
           messageId: msg.messageId,
-        };
-        if (this.ws.readyState === this.ws.OPEN) {
-          this.ws.send(JSON.stringify(finalResponse));
-        }
+          data: next.value,
+          done: true,
+        });
       } else {
-        // Regular response — wrap in WebviewSingleMessage format
-        const response: Message = {
+        // Regular response
+        this.sendToClient({
           messageType: msg.messageType,
-          data: { done: true, content: result, status: "success" },
           messageId: msg.messageId,
-        };
-        if (this.ws.readyState === this.ws.OPEN) {
-          this.ws.send(JSON.stringify(response));
-        }
+          data: result,
+          done: true,
+        });
       }
     } catch (error) {
       console.error(
         `[WebCoreMessenger] Error handling ${msg.messageType}:`,
         error,
       );
-      const errorResponse: Message = {
+      this.sendToClient({
         messageType: msg.messageType,
-        data: { done: true, error: (error as Error).message, status: "error" },
         messageId: msg.messageId,
-      };
-      if (this.ws.readyState === this.ws.OPEN) {
-        this.ws.send(JSON.stringify(errorResponse));
-      }
+        data: null,
+        done: true,
+        error: (error as Error).message,
+      });
     }
   }
 
