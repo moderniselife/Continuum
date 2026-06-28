@@ -293,6 +293,14 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
     }
 
     // -----------------------------------------------------------------------
+    // Intercept ping messages — Core expects msg.data === "ping"
+    // -----------------------------------------------------------------------
+    if (msg.messageType === "ping") {
+      msg.data = "ping";
+      // Fall through to the generic handler which will route to Core's on("ping")
+    }
+
+    // -----------------------------------------------------------------------
     // Server-side agent loop for "chat/send"
     //
     // Translates the Web IDE chat payload → Core "llm/streamChat", then runs
