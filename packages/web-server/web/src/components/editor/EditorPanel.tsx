@@ -20,6 +20,7 @@ import { useFileStore } from "@/stores/fileStore";
 import { EditorTabs } from "@/components/editor/EditorTabs";
 import {
   configureTypeScript,
+  loadProjectTsconfig,
   getOrCreateModel,
   extractImports,
   isRelativeImport,
@@ -94,6 +95,9 @@ export function EditorPanel() {
         getOrCreateModel(monaco, file.path, file.content, file.language);
       }
     }
+
+    // Load project tsconfig on first file open (async, non-blocking)
+    loadProjectTsconfig(monaco, activeFile.path);
 
     // Auto-load type declarations for imported packages
     loadTypesForFile(monaco, activeFile.content);

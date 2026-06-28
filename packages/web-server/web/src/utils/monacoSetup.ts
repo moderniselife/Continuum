@@ -11,6 +11,7 @@
  */
 
 import type { Monaco } from "@monaco-editor/react";
+import { getTsconfig } from "@/api/files";
 
 /** Configures TypeScript and JavaScript language defaults for Monaco. */
 export function configureTypeScript(monaco: Monaco): void {
@@ -33,11 +34,9 @@ export function configureTypeScript(monaco: Monaco): void {
     resolveJsonModule: true,
     skipLibCheck: true,
     forceConsistentCasingInFileNames: true,
-    // Path aliases — match the workspace tsconfig
+    // Path aliases — will be overridden by loadProjectTsconfig
     baseUrl: ".",
-    paths: {
-      "@/*": ["src/*"],
-    },
+    paths: {} as Record<string, string[]>,
   };
 
   tsDefaults.setCompilerOptions(compilerOptions);
@@ -61,12 +60,116 @@ export function configureTypeScript(monaco: Monaco): void {
   jsDefaults.setEagerModelSync(true);
 
   // ─── IntelliSense ──────────────────────────────────────────────
-  // Automatic type acquisition fetches types from the CDN when available
   tsDefaults.setWorkerOptions({
     customWorkerPath: undefined,
   });
 
   console.info("[monacoSetup] TypeScript language defaults configured");
+}
+
+/** Track whether we've already loaded the project tsconfig. */
+let projectTsconfigLoaded = false;
+
+/**
+ * Loads the project's tsconfig.json from the backend and applies its
+ * compiler options (paths, baseUrl, strict settings, etc.) to Monaco's
+ * TypeScript language service.
+ *
+ * This should be called once after the first file is opened.
+ */
+export async function loadProjectTsconfig(
+  monaco: Monaco,
+  filePath?: string,
+): Promise<void> {
+  if (projectTsconfigLoaded) return;
+
+  try {
+    const tsconfig = await getTsconfig(filePath);
+    if (!tsconfig.found) {
+      console.info("[monacoSetup] No tsconfig found for project");
+      return;
+    }
+
+    const opts = tsconfig.compilerOptions;
+    const tsDefaults = monaco.languages.typescript.typescriptDefaults;
+    const jsDefaults = monaco.languages.typescript.javascriptDefaults;
+    const ts = monaco.languages.typescript;
+
+    // Map string values to Monaco enums where needed
+    const targetMap: Record<string, number> = {
+      es5: ts.ScriptTarget.ES5,
+      es6: ts.ScriptTarget.ES2015,
+      es2015: ts.ScriptTarget.ES2015,
+      es2016: ts.ScriptTarget.ES2016,
+      es2017: ts.ScriptTarget.ES2017,
+      es2018: ts.ScriptTarget.ES2018,
+      es2019: ts.ScriptTarget.ES2019,
+      es2020: ts.ScriptTarget.ES2020,
+      esnext: ts.ScriptTarget.ESNext,
+    };
+
+    const moduleMap: Record<string, number> = {
+      commonjs: ts.ModuleKind.CommonJS,
+      amd: ts.ModuleKind.AMD,
+      es2015: ts.ModuleKind.ES2015,
+      esnext: ts.ModuleKind.ESNext,
+      nodenext: ts.ModuleKind.ESNext,
+    };
+
+    const jsxMap: Record<string, number> = {
+      react: ts.JsxEmit.React,
+      "react-jsx": ts.JsxEmit.ReactJSX,
+      "react-jsxdev": ts.JsxEmit.ReactJSX,
+      "react-native": ts.JsxEmit.ReactNative,
+      preserve: ts.JsxEmit.Preserve,
+    };
+
+    const moduleResMap: Record<string, number> = {
+      node: ts.ModuleResolutionKind.NodeJs,
+      node16: ts.ModuleResolutionKind.NodeJs,
+      nodenext: ts.ModuleResolutionKind.NodeJs,
+      classic: ts.ModuleResolutionKind.Classic,
+      bundler: ts.ModuleResolutionKind.NodeJs, // closest approximation
+    };
+
+    const targetStr = String(opts.target ?? "esnext").toLowerCase();
+    const moduleStr = String(opts.module ?? "esnext").toLowerCase();
+    const jsxStr = String(opts.jsx ?? "react-jsx").toLowerCase();
+    const moduleResStr = String(opts.moduleResolution ?? "node").toLowerCase();
+
+    const compilerOptions = {
+      target: targetMap[targetStr] ?? ts.ScriptTarget.ESNext,
+      module: moduleMap[moduleStr] ?? ts.ModuleKind.ESNext,
+      moduleResolution:
+        moduleResMap[moduleResStr] ?? ts.ModuleResolutionKind.NodeJs,
+      jsx: jsxMap[jsxStr] ?? ts.JsxEmit.ReactJSX,
+      esModuleInterop: (opts.esModuleInterop as boolean) ?? true,
+      allowSyntheticDefaultImports:
+        (opts.allowSyntheticDefaultImports as boolean) ?? true,
+      allowNonTsExtensions: true,
+      strict: (opts.strict as boolean) ?? true,
+      noEmit: true,
+      isolatedModules: true,
+      resolveJsonModule: (opts.resolveJsonModule as boolean) ?? true,
+      skipLibCheck: true,
+      forceConsistentCasingInFileNames: true,
+      baseUrl: (opts.baseUrl as string) ?? ".",
+      paths: (opts.paths as Record<string, string[]>) ?? {},
+    };
+
+    tsDefaults.setCompilerOptions(compilerOptions);
+    jsDefaults.setCompilerOptions(compilerOptions);
+
+    projectTsconfigLoaded = true;
+
+    const pathCount = Object.keys(compilerOptions.paths).length;
+    console.info(
+      `[monacoSetup] Loaded project tsconfig from ${tsconfig.path}` +
+        ` (baseUrl: ${compilerOptions.baseUrl}, ${pathCount} path aliases)`,
+    );
+  } catch (err) {
+    console.warn("[monacoSetup] Failed to load project tsconfig:", err);
+  }
 }
 
 /**
