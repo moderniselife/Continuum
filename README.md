@@ -125,32 +125,47 @@ Features and improvements added in Continuum that aren't in the original Continu
 
 ### Web IDE
 
-Run the Web IDE server:
+The Web IDE has two parts: an **Express backend** (API + WebSocket) and a **React frontend** (Vite).
+
+#### Quick Start (Development)
+
+You need **two terminals** — one for the backend, one for the frontend:
 
 ```bash
+# Terminal 1: Start the backend API server
+cd packages/web-server
+npx tsx src/index.ts --port 3333 --workspace /path/to/your/project
+
+# Terminal 2: Start the frontend dev server (hot-reload)
+cd packages/web-server/web
+bun install   # first time only
+bun run dev
+```
+
+Then open [http://localhost:5173](http://localhost:5173) (the Vite dev server proxies API calls to `:3333`).
+
+#### Production Build
+
+To build and serve everything from a single server:
+
+```bash
+# Build the frontend
+cd packages/web-server/web && bun run build
+
+# Start the server (serves the built frontend + API)
 cd packages/web-server
 npx tsx src/index.ts --port 3333 --workspace /path/to/your/project
 ```
 
-Then open [http://localhost:3333](http://localhost:3333) in your browser.
+Then open [http://localhost:3333](http://localhost:3333).
 
-Options:
+#### Server Options
 
 | Flag          | Description                     | Default           |
 | ------------- | ------------------------------- | ----------------- |
 | `--port`      | HTTP port                       | `3333`            |
 | `--workspace` | Project directory to open       | Current directory |
 | `--token`     | Bearer token for authentication | None (disabled)   |
-
-For development (hot-reload frontend):
-
-```bash
-# Terminal 1: Backend
-cd packages/web-server && npx tsx src/index.ts --port 3333 --workspace /path/to/project
-
-# Terminal 2: Frontend (Vite dev server)
-cd packages/web-server/web && bun run dev
-```
 
 ### VS Code
 
