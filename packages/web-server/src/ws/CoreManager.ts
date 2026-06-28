@@ -330,8 +330,12 @@ export class CoreManager {
   >();
   private webIde: WebIDE;
 
-  constructor(workspaceDirs: string[]) {
-    this.webIde = new WebIDE(workspaceDirs);
+  /**
+   * @param webIde - Shared WebIDE instance, created externally so it can
+   *                 be reused by the REST file routes and other services.
+   */
+  constructor(webIde: WebIDE) {
+    this.webIde = webIde;
   }
 
   /**
