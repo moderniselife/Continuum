@@ -18,7 +18,7 @@
 
 ## What is Continuum?
 
-Continuum is an AI coding agent available as a [VS Code extension](#vs-code), [CLI](#cli), and [JetBrains plugin](#jetbrains). It connects to any LLM to provide autocomplete, chat, editing, and agentic tool use — all running locally in your editor.
+Continuum is an AI coding agent available as a [VS Code extension](#vs-code), [Web IDE](#web-ide), [CLI](#cli), and [JetBrains plugin](#jetbrains). It connects to any LLM to provide autocomplete, chat, editing, and agentic tool use — all running locally in your editor.
 
 This fork is maintained by [@moderniselife](https://github.com/moderniselife) in spare time. It's a passion project, not a full-time endeavour.
 
@@ -35,9 +35,137 @@ Features and improvements added in Continuum that aren't in the original Continu
 - Persists across sessions with constant visual reminders
 - Disabled/excluded tools remain blocked — YOLO respects your boundaries
 
+### 🌐 Continuum Web IDE
+
+> A full browser-based IDE experience — like VS Code in the browser, without the VS Code dependency. Run `npx tsx packages/web-server/src/index.ts --workspace /path/to/project` and open `localhost:3333`.
+
+**Design:** Hyper Green accent (`#00ff87`) with a Liquid Glass aesthetic — translucent frosted panels, glowing accents, and animated nebula backgrounds.
+
+#### Core Features
+
+| Feature                 | Description                                                                                    |
+| ----------------------- | ---------------------------------------------------------------------------------------------- |
+| **Monaco Editor**       | Full-featured code editor with syntax highlighting, bracket matching, minimap, and auto-layout |
+| **File Explorer**       | Browse, create, rename, delete files and folders. Expand/collapse directories                  |
+| **Integrated Terminal** | XTerm.js terminal with WebSocket PTY — run commands directly in the browser                    |
+| **AI Chat Panel**       | Multi-tab chat interface with model/mode selectors, streaming, and context attachment          |
+| **Model Selector**      | Switch between LLM providers and models on the fly                                             |
+| **Settings Panel**      | Full YAML config editor with validation and save                                               |
+
+#### IntelliSense & Linting
+
+| Feature                      | Description                                                                                                 |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| **TypeScript IntelliSense**  | Completions, hover docs, signature help — powered by Monaco's TypeScript worker                             |
+| **Project tsconfig Loading** | Automatically loads `tsconfig.json` from your workspace for proper path alias resolution (`@/`, `~/`, etc.) |
+| **Auto Type Acquisition**    | Fetches `.d.ts` type declarations from `node_modules` for imported packages                                 |
+| **Semantic Diagnostics**     | Red squiggles for type errors, missing imports, and syntax issues                                           |
+| **Cross-file References**    | Open files register with the language service for go-to-definition and imports                              |
+
+#### Search & Replace
+
+| Feature                     | Description                                                         |
+| --------------------------- | ------------------------------------------------------------------- |
+| **Full-text Search**        | Search across all workspace files with ripgrep (with grep fallback) |
+| **Case Sensitivity**        | Toggle case-sensitive matching                                      |
+| **Regex Support**           | Toggle regular expression search patterns                           |
+| **Include/Exclude Filters** | Glob patterns to narrow search scope (e.g. `*.ts`, `!node_modules`) |
+| **Replace & Replace All**   | Replace individual matches or all matches across the workspace      |
+| **Result Highlighting**     | Click any result to open the file at the matching line              |
+
+#### Source Control (Git)
+
+| Feature                     | Description                                                          |
+| --------------------------- | -------------------------------------------------------------------- |
+| **Branch Display**          | Shows current branch name with badge                                 |
+| **Staged / Unstaged Files** | Visual file status with stage/unstage controls                       |
+| **Commit**                  | Commit message input with `⌘+Enter` shortcut                         |
+| **Git Submodules**          | View, commit within, and stage submodule changes in the parent repo  |
+| **Recent Commits**          | Log of last 20 commits with hash, message, author, and relative date |
+| **Diff Viewing**            | View diffs for changed files                                         |
+
+#### Chat & AI
+
+| Feature                  | Description                                                           |
+| ------------------------ | --------------------------------------------------------------------- |
+| **Multi-tab Chat**       | Open multiple independent chat sessions as tabs                       |
+| **Session History**      | Browse, search, and restore past chat sessions (date-grouped sidebar) |
+| **Mode Switching**       | Chat, Agent, Plan, and custom modes                                   |
+| **Streaming**            | Real-time token-by-token response streaming                           |
+| **YOLO Mode**            | Auto-approve tool calls per-tab                                       |
+| **Token Usage Tracking** | Live token count + estimated cost in the toolbar                      |
+
+#### Rules & Skills
+
+| Feature            | Description                                                                     |
+| ------------------ | ------------------------------------------------------------------------------- |
+| **Rules Engine**   | Global and project-scoped `.continuum/rules/` with full CRUD                    |
+| **Skills System**  | Auto-discovered `.continuum/skills/` with trigger matching and SKILL.md support |
+| **Modelled after** | AntiGravity / Claude Code customisation patterns                                |
+
+### 📊 Token Usage Tracking (Extension)
+
+> Track how many tokens you're using, input/output split, thinking tokens, cached tokens, and estimated cost — right in the chat bar.
+
+- `⚡ 1.2K · $0.003` badge in the InputToolbar (always visible)
+- Click to expand: full breakdown by model, input/output/thinking/cached
+- Session-level aggregation with per-model cost
+
+### 🛡️ Skills & Rules (Extension)
+
+> AntiGravity / Claude Code–style customisation system for the VS Code extension.
+
+- **Skills**: Auto-discovered from `.continuum/skills/` with `SKILL.md` (YAML frontmatter + instructions)
+- **Rules**: `.continuum/rules/` markdown files for behavioural constraints
+- Full CRUD in the extension sidebar with filesystem-backed persistence
+
 ---
 
 ## Getting Started
+
+### Web IDE
+
+The Web IDE has two parts: an **Express backend** (API + WebSocket) and a **React frontend** (Vite).
+
+#### Quick Start (Development)
+
+You need **two terminals** — one for the backend, one for the frontend:
+
+```bash
+# Terminal 1: Start the backend API server
+cd packages/web-server
+npx tsx src/index.ts --port 3333 --workspace /path/to/your/project
+
+# Terminal 2: Start the frontend dev server (hot-reload)
+cd packages/web-server/web
+bun install   # first time only
+bun run dev
+```
+
+Then open [http://localhost:5173](http://localhost:5173) (the Vite dev server proxies API calls to `:3333`).
+
+#### Production Build
+
+To build and serve everything from a single server:
+
+```bash
+# Build the frontend
+cd packages/web-server/web && bun run build
+
+# Start the server (serves the built frontend + API)
+cd packages/web-server
+npx tsx src/index.ts --port 3333 --workspace /path/to/your/project
+```
+
+Then open [http://localhost:3333](http://localhost:3333).
+
+#### Server Options
+
+| Flag          | Description                     | Default           |
+| ------------- | ------------------------------- | ----------------- |
+| `--port`      | HTTP port                       | `3333`            |
+| `--workspace` | Project directory to open       | Current directory |
+| `--token`     | Bearer token for authentication | None (disabled)   |
 
 ### VS Code
 
@@ -70,6 +198,30 @@ npm install -g @continuedev/cli
 > We recommend using the CLI instead of the JetBrains plugin.
 
 See [extensions/intellij](extensions/intellij) for the JetBrains source.
+
+## Architecture
+
+```
+continuum/
+├── core/                    # Shared core logic (LLM, indexing, config)
+├── extensions/
+│   ├── vscode/              # VS Code extension
+│   └── intellij/            # JetBrains plugin
+├── gui/                     # Extension webview UI (React + Tailwind)
+├── packages/
+│   └── web-server/
+│       ├── src/             # Express backend (REST + WebSocket + terminal)
+│       └── web/             # Web IDE frontend (React + Vite + Monaco)
+├── binary/                  # Standalone binary build
+└── docs/                    # Documentation site
+```
+
+### Web IDE Stack
+
+- **Frontend**: React 18, Vite, TailwindCSS, Monaco Editor, XTerm.js, Zustand
+- **Backend**: Express, WebSocket (ws), node-pty, TypeScript
+- **Design**: Liquid Glass theme with Hyper Green accent
+- **Package Manager**: Bun (preferred), npm fallback
 
 ## Documentation
 

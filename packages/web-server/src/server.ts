@@ -7,8 +7,18 @@ import { createServer } from "http";
 
 import { authMiddleware, isAuthEnabled } from "./auth/middleware.js";
 import apiRoutes from "./routes/api.js";
+import { createFileRoutes } from "./routes/files.js";
+import { createRulesRoutes } from "./routes/rules.js";
+import { createSkillsRoutes } from "./routes/skills.js";
+import { createGitRoutes } from "./routes/git.js";
+import {
+  createTerminalRoutes,
+  handleTerminalMessage,
+  attachTerminalOutput,
+} from "./routes/terminal.js";
 import { WebSocketHandler } from "./ws/handler.js";
 import { CoreManager } from "./ws/CoreManager.js";
+import { WebIDE } from "./ide/WebIDE.js";
 
 export interface ServerOptions {
   port: number;
@@ -50,9 +60,19 @@ export function createContinuumServer(options: ServerOptions) {
   app.use(authMiddleware);
 
   // ============================================================
+  // Shared WebIDE Instance
+  // ============================================================
+  const webIde = new WebIDE(options.workspaceDirs);
+
+  // ============================================================
   // API Routes
   // ============================================================
   app.use("/api/v1", apiRoutes);
+  app.use("/api/v1", createFileRoutes(webIde));
+  app.use("/api/v1", createTerminalRoutes());
+  app.use("/api/v1", createRulesRoutes(webIde));
+  app.use("/api/v1", createSkillsRoutes(webIde));
+  app.use("/api/v1/git", createGitRoutes(options.workspaceDirs));
 
   // ============================================================
   // Static GUI Serving
@@ -99,12 +119,32 @@ export function createContinuumServer(options: ServerOptions) {
   // ============================================================
   const httpServer = createServer(app);
   const wsHandler = new WebSocketHandler(httpServer);
-  const coreManager = new CoreManager(options.workspaceDirs);
+  const coreManager = new CoreManager(webIde);
 
   // Wire Core to each WebSocket connection
   wsHandler.onConnection(async (conn) => {
     try {
       await coreManager.createCore(conn);
+
+      // Handle terminal WebSocket messages for this connection
+      conn.ws.on("message", (raw: Buffer | string) => {
+        try {
+          const msg = JSON.parse(raw.toString());
+          if (
+            typeof msg.messageType === "string" &&
+            msg.messageType.startsWith("terminal/")
+          ) {
+            handleTerminalMessage(conn.ws, msg.messageType, msg.data ?? {});
+
+            // Auto-attach output when a terminal/attach message arrives
+            if (msg.messageType === "terminal/attach" && msg.data?.sessionId) {
+              attachTerminalOutput(conn.ws, msg.data.sessionId);
+            }
+          }
+        } catch {
+          // Non-JSON or non-terminal message — handled elsewhere
+        }
+      });
     } catch (error) {
       console.error(`[Server] Failed to create Core for ${conn.id}:`, error);
     }
@@ -114,5 +154,5 @@ export function createContinuumServer(options: ServerOptions) {
     coreManager.removeCore(id);
   });
 
-  return { app, httpServer, wsHandler, coreManager };
+  return { app, httpServer, wsHandler, coreManager, webIde };
 }

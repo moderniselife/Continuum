@@ -27,7 +27,7 @@ import OSRContextMenu from "./OSRContextMenu";
 const LayoutTopDiv = styled(CustomScrollbarDiv)`
   height: 100%;
   position: relative;
-  overflow-x: hidden;
+  overflow: hidden;
 `;
 
 const GridDiv = styled.div`

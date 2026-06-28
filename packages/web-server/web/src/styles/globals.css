@@ -1,41 +1,46 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
 @import "tailwindcss";
 
-/* ── Continuum Web IDE Theme ───────────────────────────────── */
+/* ── Continuum Web IDE — Hyper Green / Liquid Glass Theme ──── */
 @theme {
-  /* Backgrounds */
-  --color-bg-base: #0a0a14;
-  --color-bg-surface: #12121f;
-  --color-bg-elevated: #1a1a2e;
-  --color-bg-hover: #222240;
-  --color-bg-active: #2a2a50;
+  /* Backgrounds — deep dark with subtle green-tinted glass layers */
+  --color-bg-base: #06090a;
+  --color-bg-surface: rgba(10, 22, 18, 0.72);
+  --color-bg-elevated: rgba(16, 34, 28, 0.65);
+  --color-bg-hover: rgba(24, 50, 40, 0.55);
+  --color-bg-active: rgba(32, 64, 48, 0.6);
+  --color-bg-overlay: rgba(6, 9, 10, 0.7);
 
-  /* Text */
-  --color-text-primary: #e8e8f0;
-  --color-text-secondary: #8888a8;
-  --color-text-tertiary: #555570;
+  /* Text — crisp whites and muted greens */
+  --color-text-primary: #e8f0ec;
+  --color-text-secondary: #8aa898;
+  --color-text-tertiary: #506860;
+  --color-text-inverse: #06090a;
 
-  /* Accent */
-  --color-accent: #6c63ff;
-  --color-accent-hover: #7c74ff;
-  --color-accent-muted: rgba(108, 99, 255, 0.15);
-  --color-accent-glow: rgba(108, 99, 255, 0.25);
+  /* Accent — hyper green (electric/neon green) */
+  --color-accent: #00ff87;
+  --color-accent-hover: #33ffaa;
+  --color-accent-muted: rgba(0, 255, 135, 0.1);
+  --color-accent-glow: rgba(0, 255, 135, 0.25);
+  --color-accent-strong: #00cc6a;
 
-  /* Borders */
+  /* Borders — glass edges with green tint */
   --color-border: rgba(255, 255, 255, 0.06);
   --color-border-hover: rgba(255, 255, 255, 0.12);
+  --color-border-accent: rgba(0, 255, 135, 0.22);
+  --color-border-glass: rgba(255, 255, 255, 0.07);
 
   /* Status */
-  --color-success: #4ade80;
-  --color-error: #f87171;
-  --color-warning: #fbbf24;
-  --color-info: #60a5fa;
+  --color-success: #00ff87;
+  --color-error: #ff5252;
+  --color-warning: #ffb347;
+  --color-info: #56c8ff;
 
   /* Modes */
-  --color-mode-chat: #6c63ff;
-  --color-mode-agent: #4ade80;
-  --color-mode-plan: #fbbf24;
-  --color-mode-background: #8888a8;
+  --color-mode-chat: #00ff87;
+  --color-mode-agent: #56c8ff;
+  --color-mode-plan: #ffb347;
+  --color-mode-background: #8aa898;
   --color-mode-yolo: #ff6b35;
 
   /* Typography */
@@ -50,10 +55,17 @@
   --spacing-panel-gap: 1px;
 
   /* Sizing */
-  --sidebar-width: 260px;
-  --titlebar-height: 40px;
+  --sidebar-width: 280px;
+  --titlebar-height: 44px;
   --statusbar-height: 28px;
-  --chat-max-width: 800px;
+  --chat-max-width: 820px;
+  --settings-width: 520px;
+
+  /* Glass blur levels */
+  --blur-sm: 8px;
+  --blur-md: 16px;
+  --blur-lg: 24px;
+  --blur-xl: 40px;
 }
 
 /* ── Base ──────────────────────────────────────────────────── */
@@ -68,15 +80,119 @@ body,
   color: var(--color-text-primary);
   font-family: var(--font-sans);
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* ── Animated background gradient — green nebula ──────────── */
+.bg-nebula {
+  background:
+    radial-gradient(
+      ellipse 80% 50% at 20% 40%,
+      rgba(0, 255, 135, 0.04) 0%,
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 60% 40% at 80% 60%,
+      rgba(0, 204, 106, 0.03) 0%,
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 90% 60% at 50% 100%,
+      rgba(0, 255, 135, 0.02) 0%,
+      transparent 60%
+    ),
+    var(--color-bg-base);
+}
+
+/* ── Glass utilities ──────────────────────────────────────── */
+.glass {
+  background: rgba(10, 22, 18, 0.55);
+  backdrop-filter: blur(var(--blur-md));
+  -webkit-backdrop-filter: blur(var(--blur-md));
+  border: 1px solid var(--color-border-glass);
+}
+
+.glass-heavy {
+  background: rgba(10, 22, 18, 0.72);
+  backdrop-filter: blur(var(--blur-lg));
+  -webkit-backdrop-filter: blur(var(--blur-lg));
+  border: 1px solid var(--color-border-glass);
+}
+
+.glass-subtle {
+  background: rgba(10, 22, 18, 0.35);
+  backdrop-filter: blur(var(--blur-sm));
+  -webkit-backdrop-filter: blur(var(--blur-sm));
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.glass-input {
+  background: rgba(8, 16, 12, 0.6);
+  backdrop-filter: blur(var(--blur-sm));
+  -webkit-backdrop-filter: blur(var(--blur-sm));
+  border: 1px solid var(--color-border);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-input:focus,
+.glass-input:focus-within {
+  border-color: var(--color-border-accent);
+  box-shadow:
+    0 0 0 1px var(--color-border-accent),
+    0 0 20px rgba(0, 255, 135, 0.06);
+}
+
+/* ── Glass shine overlay (pseudo-element mixin) ───────────── */
+.glass-shine {
+  position: relative;
+  overflow: hidden;
+}
+
+.glass-shine::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.04) 0%,
+    transparent 40%,
+    transparent 60%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ── Glow effects — hyper green ───────────────────────────── */
+.glow-accent {
+  box-shadow:
+    0 0 16px rgba(0, 255, 135, 0.12),
+    0 0 4px rgba(0, 255, 135, 0.08);
+}
+
+.glow-accent-strong {
+  box-shadow:
+    0 0 24px rgba(0, 255, 135, 0.2),
+    0 0 8px rgba(0, 255, 135, 0.12),
+    inset 0 0 12px rgba(0, 255, 135, 0.04);
+}
+
+.glow-success {
+  box-shadow: 0 0 12px rgba(0, 255, 135, 0.25);
+}
+
+.glow-yolo {
+  box-shadow:
+    0 0 16px rgba(255, 107, 53, 0.2),
+    0 0 4px rgba(255, 107, 53, 0.15);
+}
+
 /* ── Scrollbars ────────────────────────────────────────────── */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
@@ -84,17 +200,17 @@ body,
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.1);
-  border-radius: 3px;
+  background-color: rgba(0, 255, 135, 0.1);
+  border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(255, 255, 255, 0.2);
+  background-color: rgba(0, 255, 135, 0.25);
 }
 
 /* ── Selection ─────────────────────────────────────────────── */
 ::selection {
-  background-color: var(--color-accent-glow);
+  background-color: rgba(0, 255, 135, 0.25);
   color: #ffffff;
 }
 
@@ -102,7 +218,7 @@ body,
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
@@ -110,7 +226,29 @@ body,
   }
 }
 
-@keyframes slideIn {
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideOutRight {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+}
+
+@keyframes slideInLeft {
   from {
     opacity: 0;
     transform: translateX(-8px);
@@ -125,12 +263,22 @@ body,
   0%,
   80%,
   100% {
-    opacity: 0.3;
-    transform: scale(0.8);
+    opacity: 0.4;
+    transform: scale(0.85);
   }
   40% {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+@keyframes pulse-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 4px rgba(0, 255, 135, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 14px rgba(0, 255, 135, 0.65);
   }
 }
 
@@ -143,10 +291,88 @@ body,
   }
 }
 
-.animate-fade-in {
-  animation: fadeIn 0.2s ease-out;
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
 }
 
-.animate-slide-in {
-  animation: slideIn 0.15s ease-out;
+@keyframes fire {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes terminal-glow {
+  0%,
+  100% {
+    text-shadow: 0 0 6px rgba(0, 255, 135, 0.4);
+  }
+  50% {
+    text-shadow: 0 0 12px rgba(0, 255, 135, 0.7);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.animate-slide-in-left {
+  animation: slideInLeft 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.animate-terminal-glow {
+  animation: terminal-glow 3s ease-in-out infinite;
+}
+
+/* ── Gradient utilities — hyper green ─────────────────────── */
+.gradient-accent {
+  background: linear-gradient(135deg, #00ff87 0%, #00cc6a 50%, #33ffaa 100%);
+}
+
+.gradient-accent-hover {
+  background: linear-gradient(135deg, #33ffaa 0%, #00ff87 50%, #66ffc4 100%);
+}
+
+.gradient-yolo {
+  background: linear-gradient(135deg, #ff6b35, #ff4500, #ff6b35);
+  background-size: 200% 200%;
+  animation: fire 3s ease infinite;
+}
+
+.gradient-user-bubble {
+  background: linear-gradient(
+    135deg,
+    rgba(0, 255, 135, 0.2) 0%,
+    rgba(0, 204, 106, 0.12) 100%
+  );
+}
+
+/* ── Settings panel overlay ───────────────────────────────── */
+.settings-overlay {
+  background: rgba(6, 9, 10, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+/* ── Monaco editor overrides ──────────────────────────────── */
+.monaco-container .monaco-editor,
+.monaco-container .monaco-editor .overflow-guard {
+  border-radius: 8px;
 }
