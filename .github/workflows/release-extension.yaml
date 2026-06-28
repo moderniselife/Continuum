@@ -1,0 +1,235 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Continuum — Auto-Package & Release VS Code Extension
+# ──────────────────────────────────────────────────────────────────────────────
+#
+# Builds the VS Code extension for all supported platforms and publishes the
+# .vsix files to GitHub Releases. Does NOT publish to the VS Code Marketplace
+# or Open VSX Registry (add those secrets and steps later if needed).
+#
+# Triggers:
+#   • Push a tag matching `v*` (e.g. v1.3.41, v1.4.0)
+#   • Manual dispatch from the Actions tab
+#
+# Versioning (A+C strategy):
+#   • By default, uses the version from extensions/vscode/package.json
+#   • On manual dispatch, you can optionally override the version
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: Release Extension
+
+on:
+  push:
+    tags:
+      - "v*"
+
+  workflow_dispatch:
+    inputs:
+      version_override:
+        description: "Version override (e.g. 1.4.0). Leave blank to use package.json version."
+        required: false
+        default: ""
+      pre_release:
+        description: "Mark as pre-release?"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # Job 1: Resolve the release version
+  # ──────────────────────────────────────────────────────────────────────────
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      tag: ${{ steps.resolve.outputs.tag }}
+      is_prerelease: ${{ steps.resolve.outputs.is_prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: resolve
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            # Tag push — extract version from tag (strip leading 'v')
+            TAG="${{ github.ref_name }}"
+            VERSION="${TAG#v}"
+            # Pre-release if tag contains a hyphen (e.g. v1.4.0-beta.1)
+            if [[ "$VERSION" == *-* ]]; then
+              IS_PRERELEASE="true"
+            else
+              IS_PRERELEASE="false"
+            fi
+          else
+            # Manual dispatch
+            OVERRIDE="${{ github.event.inputs.version_override }}"
+            if [ -n "$OVERRIDE" ]; then
+              VERSION="$OVERRIDE"
+            else
+              VERSION=$(node -p "require('./extensions/vscode/package.json').version")
+            fi
+            TAG="v${VERSION}"
+            IS_PRERELEASE="${{ github.event.inputs.pre_release }}"
+          fi
+
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "is_prerelease=${IS_PRERELEASE}" >> $GITHUB_OUTPUT
+
+          echo "📦 Version: ${VERSION}"
+          echo "🏷️  Tag: ${TAG}"
+          echo "🔖 Pre-release: ${IS_PRERELEASE}"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Job 2: Build the extension for all platforms
+  # ──────────────────────────────────────────────────────────────────────────
+  build:
+    needs: version
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win32
+            arch: x64
+            npm_config_arch: x64
+          - os: windows-latest
+            platform: win32
+            arch: arm64
+            npm_config_arch: arm
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+            npm_config_arch: x64
+          - os: ubuntu-latest
+            platform: linux
+            arch: arm64
+            npm_config_arch: arm64
+          - os: ubuntu-latest
+            platform: linux
+            arch: armhf
+            npm_config_arch: arm
+          - os: ubuntu-latest
+            platform: alpine
+            arch: x64
+            npm_config_arch: x64
+          - os: macos-latest
+            platform: darwin
+            arch: x64
+            npm_config_arch: x64
+          - os: macos-latest
+            platform: darwin
+            arch: arm64
+            npm_config_arch: arm64
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+
+      # Set the version in package.json before building
+      - name: Set extension version
+        shell: bash
+        run: |
+          cd extensions/vscode
+          CURRENT=$(node -p "require('./package.json').version")
+          TARGET="${{ needs.version.outputs.version }}"
+          if [ "$CURRENT" != "$TARGET" ]; then
+            echo "📝 Updating version: $CURRENT → $TARGET"
+            npm version "$TARGET" --no-git-tag-version --allow-same-version
+          else
+            echo "✅ Version already set to $TARGET"
+          fi
+
+      # Use the existing composite action for the heavy lifting
+      - uses: ./.github/actions/build-vscode-extension
+        with:
+          platform: ${{ matrix.platform }}
+          arch: ${{ matrix.arch }}
+          npm_config_arch: ${{ matrix.npm_config_arch }}
+          pre-release: ${{ needs.version.outputs.is_prerelease }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload .vsix artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: continuum-${{ matrix.platform }}-${{ matrix.arch }}
+          path: "extensions/vscode/*.vsix"
+          retention-days: 30
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Job 3: Create a GitHub Release with all .vsix files
+  # ──────────────────────────────────────────────────────────────────────────
+  release:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Download all .vsix artifacts into a single directory
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "continuum-*"
+          path: vsix-artifacts
+          merge-multiple: true
+
+      - name: List release assets
+        run: |
+          echo "📦 Release assets:"
+          ls -lh vsix-artifacts/
+          echo ""
+          echo "Total: $(ls vsix-artifacts/*.vsix 2>/dev/null | wc -l) .vsix files"
+
+      # Create or update the tag for manual dispatches
+      - name: Create tag (manual dispatch only)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          TAG="${{ needs.version.outputs.tag }}"
+          # Delete existing tag if present (allows re-running for same version)
+          git tag -d "$TAG" 2>/dev/null || true
+          git push origin ":refs/tags/$TAG" 2>/dev/null || true
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.version.outputs.tag }}
+          name: "Continuum ${{ needs.version.outputs.version }}"
+          files: vsix-artifacts/*.vsix
+          prerelease: ${{ needs.version.outputs.is_prerelease == 'true' }}
+          generate_release_notes: true
+          body: |
+            ## ⚡ Continuum ${{ needs.version.outputs.version }}
+
+            ### Installation
+
+            Download the `.vsix` file for your platform and install:
+
+            ```bash
+            code --install-extension continuum-<platform>-<arch>-${{ needs.version.outputs.version }}.vsix
+            ```
+
+            | Platform | File |
+            |----------|------|
+            | Windows x64 | `continuum-win32-x64-*.vsix` |
+            | Windows ARM64 | `continuum-win32-arm64-*.vsix` |
+            | Linux x64 | `continuum-linux-x64-*.vsix` |
+            | Linux ARM64 | `continuum-linux-arm64-*.vsix` |
+            | Linux ARMhf | `continuum-linux-armhf-*.vsix` |
+            | Alpine x64 | `continuum-alpine-x64-*.vsix` |
+            | macOS x64 (Intel) | `continuum-darwin-x64-*.vsix` |
+            | macOS ARM64 (Apple Silicon) | `continuum-darwin-arm64-*.vsix` |
+
+            ---
+          token: ${{ secrets.GITHUB_TOKEN }}
