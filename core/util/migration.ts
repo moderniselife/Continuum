@@ -34,19 +34,11 @@ export function migrateFromContinue(): MigrationResult {
     return result;
   }
 
-  // Skip if continuum dir already has content (manual setup)
-  if (fs.existsSync(continuumDir) && fs.readdirSync(continuumDir).length > 0) {
-    // Write marker so we don't check again
-    fs.writeFileSync(
-      markerFile,
-      JSON.stringify({
-        timestamp: new Date().toISOString(),
-        skipped: true,
-        reason: "continuum directory already has content",
-      }),
-    );
-    return result;
-  }
+  // If continuum dir already has content, do a selective merge —
+  // migrate any items that don't already exist in the destination.
+  // This prevents chat history loss when ~/.continuum was partially set up.
+  const continuumHasContent =
+    fs.existsSync(continuumDir) && fs.readdirSync(continuumDir).length > 0;
 
   // Create continuum directory
   if (!fs.existsSync(continuumDir)) {
@@ -79,9 +71,16 @@ export function migrateFromContinue(): MigrationResult {
       continue;
     }
 
+    // When continuum already has content, skip files that already exist
+    // but still merge directory contents (e.g. individual session files).
+    if (continuumHasContent && !item.isDir && fs.existsSync(destPath)) {
+      continue;
+    }
+
     try {
       if (item.isDir) {
-        copyDirRecursive(srcPath, destPath);
+        // noClobber=true when merging into existing dir — don't overwrite
+        copyDirRecursive(srcPath, destPath, continuumHasContent);
       } else {
         fs.copyFileSync(srcPath, destPath);
       }
@@ -110,7 +109,11 @@ export function migrateFromContinue(): MigrationResult {
   return result;
 }
 
-function copyDirRecursive(src: string, dest: string): void {
+/**
+ * Recursively copies a directory. When noClobber is true, existing files
+ * in the destination are preserved (merge mode for selective migration).
+ */
+function copyDirRecursive(src: string, dest: string, noClobber = false): void {
   if (!fs.existsSync(dest)) {
     fs.mkdirSync(dest, { recursive: true });
   }
@@ -121,8 +124,12 @@ function copyDirRecursive(src: string, dest: string): void {
     const destPath = path.join(dest, entry.name);
 
     if (entry.isDirectory()) {
-      copyDirRecursive(srcPath, destPath);
+      copyDirRecursive(srcPath, destPath, noClobber);
     } else {
+      // Skip if file already exists and we're in no-clobber mode
+      if (noClobber && fs.existsSync(destPath)) {
+        continue;
+      }
       fs.copyFileSync(srcPath, destPath);
     }
   }
