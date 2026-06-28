@@ -13,6 +13,7 @@
  */
 
 import {
+  Clock,
   FolderTree,
   GitBranch,
   MessageSquare,
@@ -37,6 +38,7 @@ const ACTIVITIES: ActivityButton[] = [
   { id: "explorer", icon: FolderTree, label: "Explorer" },
   { id: "search", icon: Search, label: "Search" },
   { id: "git", icon: GitBranch, label: "Source Control" },
+  { id: "history", icon: Clock, label: "Chat History" },
   { id: "rules", icon: ShieldCheck, label: "Rules" },
   { id: "skills", icon: Zap, label: "Skills" },
   { id: "chat", icon: MessageSquare, label: "Chat" },

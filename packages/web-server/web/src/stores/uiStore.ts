@@ -11,6 +11,7 @@ export type ActivityPanel =
   | "explorer"
   | "search"
   | "git"
+  | "history"
   | "rules"
   | "skills"
   | "chat";

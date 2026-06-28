@@ -19,6 +19,7 @@ import ChatPanel from "@/components/chat/ChatPanel";
 import EditorPanel from "@/components/editor/EditorPanel";
 import FileExplorer from "@/components/explorer/FileExplorer";
 import RulesPanel from "@/components/rules/RulesPanel";
+import SessionHistoryPanel from "@/components/sessions/SessionHistoryPanel";
 import SkillsPanel from "@/components/skills/SkillsPanel";
 import SettingsPanel from "@/components/settings/SettingsPanel";
 import TerminalPanel from "@/components/terminal/Terminal";
@@ -41,6 +42,7 @@ function AppShell() {
     activeActivity === "explorer" ||
     activeActivity === "search" ||
     activeActivity === "git" ||
+    activeActivity === "history" ||
     activeActivity === "rules" ||
     activeActivity === "skills";
 
@@ -72,6 +74,7 @@ function AppShell() {
                   <p className="text-sm">Git panel coming soon...</p>
                 </div>
               )}
+              {activeActivity === "history" && <SessionHistoryPanel />}
               {activeActivity === "rules" && <RulesPanel />}
               {activeActivity === "skills" && <SkillsPanel />}
             </div>
