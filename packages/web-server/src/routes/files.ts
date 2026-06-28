@@ -1357,6 +1357,208 @@ export function createFileRoutes(webIde: WebIDE): Router {
     }
   });
 
+  // ============================================================
+  // File Listing for @file Context Provider
+  // ============================================================
+
+  /**
+   * Directories to skip when recursively walking the workspace.
+   * These are common non-source directories that would bloat the
+   * file list and are unlikely to be useful context.
+   */
+  const WALK_EXCLUDE_DIRS = new Set([
+    "node_modules",
+    ".git",
+    ".hg",
+    ".svn",
+    "dist",
+    "build",
+    "out",
+    ".next",
+    ".nuxt",
+    ".cache",
+    ".turbo",
+    ".parcel-cache",
+    "__pycache__",
+    ".tox",
+    ".venv",
+    "venv",
+    "coverage",
+    ".nyc_output",
+    ".DS_Store",
+    "vendor",
+  ]);
+
+  /**
+   * Binary file extensions that should be excluded from the context
+   * file picker — they're not useful as LLM context.
+   */
+  const BINARY_EXTENSIONS = new Set([
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".ico",
+    ".bmp",
+    ".webp",
+    ".svg",
+    ".mp3",
+    ".mp4",
+    ".mov",
+    ".avi",
+    ".wmv",
+    ".flv",
+    ".wav",
+    ".ogg",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".eot",
+    ".otf",
+    ".zip",
+    ".tar",
+    ".gz",
+    ".bz2",
+    ".7z",
+    ".rar",
+    ".pdf",
+    ".doc",
+    ".docx",
+    ".xls",
+    ".xlsx",
+    ".ppt",
+    ".pptx",
+    ".exe",
+    ".dll",
+    ".so",
+    ".dylib",
+    ".o",
+    ".a",
+    ".class",
+    ".jar",
+    ".pyc",
+    ".pyo",
+    ".wasm",
+    ".lock",
+  ]);
+
+  /**
+   * Recursively walks a directory, collecting file paths up to a limit.
+   *
+   * @param dir    - Absolute directory path to walk.
+   * @param base   - Workspace root (used for relative paths).
+   * @param files  - Accumulator array for results.
+   * @param limit  - Maximum number of files to collect.
+   * @param depth  - Current recursion depth (capped at 15).
+   */
+  function walkDir(
+    dir: string,
+    base: string,
+    files: Array<{ path: string; relativePath: string; name: string }>,
+    limit: number,
+    depth = 0,
+  ): void {
+    if (depth > 15 || files.length >= limit) return;
+
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return; // Skip unreadable directories
+    }
+
+    // Sort entries so files come first (deterministic ordering)
+    entries.sort((a, b) => {
+      if (a.isDirectory() !== b.isDirectory()) {
+        return a.isDirectory() ? 1 : -1;
+      }
+      return a.name.localeCompare(b.name);
+    });
+
+    for (const entry of entries) {
+      if (files.length >= limit) break;
+
+      // Skip hidden files/dirs (except .github, .vscode, etc.)
+      if (
+        entry.name.startsWith(".") &&
+        !entry.name.startsWith(".github") &&
+        !entry.name.startsWith(".vscode") &&
+        !entry.name.startsWith(".env") &&
+        !entry.name.startsWith(".eslint") &&
+        !entry.name.startsWith(".prettier")
+      ) {
+        // Still skip .env files for security — the isSecurityConcernLocal
+        // check below will catch them, but skip here to avoid even listing
+        if (entry.isDirectory()) continue;
+      }
+
+      const fullPath = path.join(dir, entry.name);
+
+      if (entry.isDirectory()) {
+        if (WALK_EXCLUDE_DIRS.has(entry.name)) continue;
+        walkDir(fullPath, base, files, limit, depth + 1);
+      } else if (entry.isFile()) {
+        const ext = path.extname(entry.name).toLowerCase();
+        if (BINARY_EXTENSIONS.has(ext)) continue;
+        if (isSecurityConcernLocal(fullPath)) continue;
+
+        const relativePath = path.relative(base, fullPath);
+        files.push({
+          path: fullPath,
+          relativePath,
+          name: entry.name,
+        });
+      }
+    }
+  }
+
+  /**
+   * GET /files/list-all
+   * Returns all source files in the workspace, recursively.
+   *
+   * Used by the @file context provider to populate the mention dropdown.
+   * Excludes node_modules, .git, build artefacts, and binary files.
+   *
+   * Query params:
+   *   - limit: Maximum files to return (default 5000, max 10000)
+   */
+  router.get("/files/list-all", async (_req: Request, res: Response) => {
+    try {
+      const limit = Math.min(
+        parseInt((_req.query.limit as string) ?? "5000", 10),
+        10_000,
+      );
+
+      const dirs = await getWorkspaceDirs();
+      if (dirs.length === 0) {
+        res.json({ files: [], total: 0 });
+        return;
+      }
+
+      const allFiles: Array<{
+        path: string;
+        relativePath: string;
+        name: string;
+      }> = [];
+
+      for (const dir of dirs) {
+        walkDir(dir, dir, allFiles, limit);
+        if (allFiles.length >= limit) break;
+      }
+
+      res.json({
+        files: allFiles.slice(0, limit),
+        total: allFiles.length,
+        truncated: allFiles.length >= limit,
+      });
+    } catch (error) {
+      res.status(500).json({
+        error: "Failed to list workspace files",
+        details: (error as Error).message,
+      });
+    }
+  });
+
   return router;
 }
 

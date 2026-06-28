@@ -318,6 +318,12 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
       };
 
       const userContent = chatPayload?.message?.content ?? "";
+      const contextItems = (chatPayload?.message?.context ?? []) as Array<{
+        id?: string;
+        name?: string;
+        type?: string;
+        content?: string;
+      }>;
 
       // Load config and gather enabled tools
       let tools: Tool[] = [];
@@ -332,11 +338,6 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
           err,
         );
       }
-
-      // Build conversation history, prepending context items if present
-      const contextItems = (chatPayload?.message as any)?.context as
-        | Array<{ name?: string; content?: string; type?: string }>
-        | undefined;
 
       const conversationHistory: ChatMessage[] = [];
 
