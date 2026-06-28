@@ -6,6 +6,9 @@ import { create } from "zustand";
 
 export type SettingsTab = "config" | "models" | "general" | "about";
 
+/** Activity panel identifiers for the left-hand activity bar. */
+export type ActivityPanel = "explorer" | "search" | "git" | "chat";
+
 interface UIState {
   // -- Settings panel ---
   settingsPanelOpen: boolean;
@@ -19,12 +22,25 @@ interface UIState {
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
 
+  // -- Activity bar ---
+  activeActivity: ActivityPanel;
+  setActiveActivity: (activity: ActivityPanel) => void;
+
+  // -- Panel sizes ---
+  explorerWidth: number;
+  chatPanelWidth: number;
+  setExplorerWidth: (width: number) => void;
+  setChatPanelWidth: (width: number) => void;
+
+  // -- Chat panel ---
+  chatPanelOpen: boolean;
+  toggleChatPanel: () => void;
+
   // -- Terminal ---
   terminalOpen: boolean;
   terminalHeight: number;
   toggleTerminal: () => void;
   setTerminalHeight: (height: number) => void;
-  closeTerminal: () => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -41,11 +57,23 @@ export const useUIStore = create<UIState>((set) => ({
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
 
+  // Activity bar
+  activeActivity: "explorer",
+  setActiveActivity: (activity) => set({ activeActivity: activity }),
+
+  // Panel sizes
+  explorerWidth: 260,
+  chatPanelWidth: 380,
+  setExplorerWidth: (width) => set({ explorerWidth: width }),
+  setChatPanelWidth: (width) => set({ chatPanelWidth: width }),
+
+  // Chat panel
+  chatPanelOpen: true,
+  toggleChatPanel: () => set((s) => ({ chatPanelOpen: !s.chatPanelOpen })),
+
   // Terminal
   terminalOpen: false,
-  terminalHeight: 240,
+  terminalHeight: 200,
   toggleTerminal: () => set((s) => ({ terminalOpen: !s.terminalOpen })),
-  setTerminalHeight: (height) =>
-    set({ terminalHeight: Math.max(120, Math.min(height, 600)) }),
-  closeTerminal: () => set({ terminalOpen: false }),
+  setTerminalHeight: (height) => set({ terminalHeight: height }),
 }));
