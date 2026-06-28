@@ -1,32 +1,67 @@
 /**
- * FileIcon — Renders an appropriate icon for a file based on its extension.
+ * FileIcon — Maps file extensions to colour-coded Lucide icons.
  *
- * Maps common file extensions to coloured lucide-react icons for use across
- * the editor tabs, file explorer, and search results.
+ * Used throughout the file explorer to visually distinguish file types.
+ * Directories show a Folder/FolderOpen icon in amber.
+ *
+ * Supports both the original `filename`-only API (for editor tabs, etc.)
+ * and the full `name + isDirectory + isOpen` API (for the file tree).
  */
 
 import {
+  File,
+  FileBox,
+  FileCode,
   FileCode2,
   FileJson2,
   FileText,
   FileType2,
-  Image,
-  FileBox,
-  File,
+  Folder,
+  FolderOpen,
   Braces,
-  Hash,
-  Database,
   Cog,
+  Database,
   Globe,
+  Hash,
+  Image,
+  Palette,
 } from "lucide-react";
 
-interface FileIconProps {
-  filename: string;
+// ---------------------------------------------------------------------------
+// Prop types — supports two calling conventions
+// ---------------------------------------------------------------------------
+
+interface FileIconBaseProps {
+  /** Icon size in pixels. */
   size?: number;
+  /** Additional Tailwind classes. */
   className?: string;
 }
 
-/** Extension → icon + colour mapping */
+interface FileIconByName extends FileIconBaseProps {
+  /** File or directory name (used for extension matching). */
+  name: string;
+  /** Whether this icon represents a directory. */
+  isDirectory: boolean;
+  /** Whether the directory is currently expanded (directories only). */
+  isOpen?: boolean;
+  filename?: never;
+}
+
+interface FileIconByFilename extends FileIconBaseProps {
+  /** Filename for backward-compat with the original API. */
+  filename: string;
+  name?: never;
+  isDirectory?: never;
+  isOpen?: never;
+}
+
+type FileIconProps = FileIconByName | FileIconByFilename;
+
+// ---------------------------------------------------------------------------
+// Extension → icon + colour mapping
+// ---------------------------------------------------------------------------
+
 const ICON_MAP: Record<string, { icon: typeof File; colour: string }> = {
   // TypeScript / JavaScript
   ts: { icon: FileCode2, colour: "text-blue-400" },
@@ -44,11 +79,11 @@ const ICON_MAP: Record<string, { icon: typeof File; colour: string }> = {
   toml: { icon: Cog, colour: "text-orange-300" },
 
   // Web
-  html: { icon: Globe, colour: "text-orange-400" },
-  htm: { icon: Globe, colour: "text-orange-400" },
-  css: { icon: Braces, colour: "text-sky-400" },
-  scss: { icon: Braces, colour: "text-pink-400" },
-  less: { icon: Braces, colour: "text-indigo-400" },
+  html: { icon: Globe, colour: "text-red-400" },
+  htm: { icon: Globe, colour: "text-red-400" },
+  css: { icon: Palette, colour: "text-purple-400" },
+  scss: { icon: Palette, colour: "text-purple-400" },
+  less: { icon: Palette, colour: "text-purple-400" },
 
   // Data
   sql: { icon: Database, colour: "text-emerald-400" },
@@ -56,8 +91,8 @@ const ICON_MAP: Record<string, { icon: typeof File; colour: string }> = {
   gql: { icon: Hash, colour: "text-pink-400" },
 
   // Prose
-  md: { icon: FileText, colour: "text-text-secondary" },
-  mdx: { icon: FileText, colour: "text-text-secondary" },
+  md: { icon: FileText, colour: "text-gray-400" },
+  mdx: { icon: FileText, colour: "text-gray-400" },
   txt: { icon: FileText, colour: "text-text-tertiary" },
 
   // Images
@@ -75,19 +110,40 @@ const ICON_MAP: Record<string, { icon: typeof File; colour: string }> = {
   lock: { icon: FileBox, colour: "text-text-tertiary" },
 
   // Python
-  py: { icon: FileCode2, colour: "text-green-400" },
+  py: { icon: FileCode2, colour: "text-blue-300" },
 
   // Rust
-  rs: { icon: FileCode2, colour: "text-orange-400" },
+  rs: { icon: FileCode2, colour: "text-orange-500" },
 
   // Go
   go: { icon: FileCode2, colour: "text-cyan-400" },
 
   // Shell
-  sh: { icon: Hash, colour: "text-text-secondary" },
-  bash: { icon: Hash, colour: "text-text-secondary" },
-  zsh: { icon: Hash, colour: "text-text-secondary" },
+  sh: { icon: FileCode, colour: "text-green-300" },
+  bash: { icon: FileCode, colour: "text-green-300" },
+  zsh: { icon: FileCode, colour: "text-green-300" },
+
+  // Java / Kotlin
+  java: { icon: FileCode2, colour: "text-red-300" },
+  kt: { icon: FileCode2, colour: "text-red-300" },
+  kts: { icon: FileCode2, colour: "text-red-300" },
+
+  // C / C++
+  c: { icon: FileCode2, colour: "text-blue-200" },
+  cpp: { icon: FileCode2, colour: "text-blue-200" },
+  h: { icon: FileCode2, colour: "text-blue-200" },
+  hpp: { icon: FileCode2, colour: "text-blue-200" },
+
+  // Swift
+  swift: { icon: FileCode2, colour: "text-orange-300" },
+
+  // Ruby
+  rb: { icon: FileCode2, colour: "text-red-500" },
 };
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function getExtension(filename: string): string {
   // Handle compound extensions like .d.ts
@@ -96,17 +152,40 @@ function getExtension(filename: string): string {
   return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : "";
 }
 
-export function FileIcon({
-  filename,
-  size = 14,
-  className = "",
-}: FileIconProps) {
-  const ext = getExtension(filename);
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
+export function FileIcon(props: FileIconProps) {
+  const { size = 16, className = "" } = props;
+
+  // Resolve the display name from either prop shape
+  const displayName =
+    "filename" in props && props.filename
+      ? props.filename
+      : (props as FileIconByName).name;
+
+  const isDir = "isDirectory" in props ? props.isDirectory : false;
+  const isOpen = "isOpen" in props ? props.isOpen : false;
+
+  // Directory icons
+  if (isDir) {
+    const IconComponent = isOpen ? FolderOpen : Folder;
+    return (
+      <IconComponent
+        size={size}
+        className={`shrink-0 text-amber-400 ${className}`}
+      />
+    );
+  }
+
+  // File icons — match by extension
+  const ext = getExtension(displayName);
   const mapping = ICON_MAP[ext] ?? { icon: File, colour: "text-text-tertiary" };
   const Icon = mapping.icon;
 
   return (
-    <Icon size={size} className={`${mapping.colour} ${className} shrink-0`} />
+    <Icon size={size} className={`shrink-0 ${mapping.colour} ${className}`} />
   );
 }
 

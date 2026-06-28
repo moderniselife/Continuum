@@ -40,7 +40,7 @@ const TERMINAL_THEME = {
 } as const;
 
 export function Terminal() {
-  const { terminalHeight, setTerminalHeight, closeTerminal } = useUIStore();
+  const { terminalHeight, setTerminalHeight, toggleTerminal } = useUIStore();
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -180,7 +180,7 @@ export function Terminal() {
         <div className="flex items-center gap-1">
           <button
             type="button"
-            onClick={closeTerminal}
+            onClick={toggleTerminal}
             className="text-text-tertiary hover:text-text-primary hover:bg-bg-hover rounded p-0.5 transition-colors"
             title="Minimise terminal"
           >
@@ -188,7 +188,7 @@ export function Terminal() {
           </button>
           <button
             type="button"
-            onClick={closeTerminal}
+            onClick={toggleTerminal}
             className="text-text-tertiary hover:text-error hover:bg-bg-hover rounded p-0.5 transition-colors"
             title="Close terminal"
           >
