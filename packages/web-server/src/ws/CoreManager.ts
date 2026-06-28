@@ -1,9 +1,12 @@
+import { randomUUID } from "crypto";
 import { WebIDE } from "../ide/WebIDE.js";
 import { WebMessenger } from "./WebMessenger.js";
 import type { WebSocketConnection } from "./handler.js";
 
 import { Core } from "core/core.js";
+import type { ConfigHandler } from "core/config/ConfigHandler.js";
 import type { ToCoreProtocol, FromCoreProtocol } from "core/protocol/index.js";
+import type { ChatMessage, Tool, ToolCallDelta } from "core/index.js";
 import type { IMessenger, Message } from "core/protocol/messenger/index.js";
 import type { WebSocket } from "ws";
 import { v4 as uuidv4 } from "uuid";
@@ -25,6 +28,7 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
     { resolve: (value: any) => void; reject: (error: any) => void }
   >();
   private _onErrorHandlers: ((message: Message, error: Error) => void)[] = [];
+  private _configHandler: ConfigHandler | null = null;
 
   constructor(
     private ws: WebSocket,
@@ -48,6 +52,14 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
 
   onError(handler: (message: Message, error: Error) => void): void {
     this._onErrorHandlers.push(handler);
+  }
+
+  /**
+   * Set the config handler. Called after Core is constructed, since the
+   * messenger must exist before Core but configHandler comes from Core.
+   */
+  setConfigHandler(handler: ConfigHandler): void {
+    this._configHandler = handler;
   }
 
   on<T extends keyof ToCoreProtocol>(
@@ -281,9 +293,11 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
     }
 
     // -----------------------------------------------------------------------
-    // Translate Web IDE "chat/send" → Core "llm/streamChat"
-    // The Web IDE sends a simplified payload; we convert it to the format
-    // that Core's llm/streamChat handler expects.
+    // Server-side agent loop for "chat/send"
+    //
+    // Translates the Web IDE chat payload → Core "llm/streamChat", then runs
+    // an agentic loop: stream the LLM response, detect tool calls, execute
+    // them via WebIDE, append results, and re-invoke — up to MAX_ITERATIONS.
     // -----------------------------------------------------------------------
     if (msg.messageType === "chat/send") {
       const chatPayload = msg.data as {
@@ -291,20 +305,218 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
         sessionId?: string;
         mode?: string;
         modelId?: string;
+        allowAutoApply?: boolean;
       };
 
       const userContent = chatPayload?.message?.content ?? "";
 
-      // Build a ChatMessage array — just the user message for now.
-      // In future, we could maintain server-side session history.
-      const messages = [{ role: "user" as const, content: userContent }];
+      // Load config and gather enabled tools
+      let tools: Tool[] = [];
+      try {
+        if (this._configHandler) {
+          const { config } = await this._configHandler.loadConfig();
+          tools = config?.tools ?? [];
+        }
+      } catch (err) {
+        console.warn(
+          "[WebCoreMessenger] Could not load tools from config:",
+          err,
+        );
+      }
 
-      // Rewrite the message to look like "llm/streamChat"
-      msg.messageType = "llm/streamChat";
-      msg.data = {
-        messages,
-        completionOptions: {},
-      };
+      const conversationHistory: ChatMessage[] = [
+        { role: "user" as const, content: userContent },
+      ];
+
+      const MAX_ITERATIONS = 10;
+      let iteration = 0;
+
+      while (iteration < MAX_ITERATIONS) {
+        iteration++;
+
+        // Build the llm/streamChat message
+        const streamMsg: Message = {
+          messageType: "llm/streamChat",
+          messageId: msg.messageId,
+          data: {
+            messages: conversationHistory,
+            completionOptions: {
+              tools: tools.length > 0 ? tools : undefined,
+            },
+          },
+        };
+
+        // Retrieve the registered handler for llm/streamChat
+        const listener = this.myTypeListeners.get("llm/streamChat");
+        if (!listener) {
+          console.warn(
+            "[WebCoreMessenger] No llm/streamChat handler registered",
+          );
+          break;
+        }
+
+        let accumulatedContent = "";
+        let accumulatedToolCalls: ToolCallDelta[] = [];
+
+        try {
+          const result = await listener(streamMsg);
+
+          // Stream async generator chunks to the client
+          if (result && typeof result[Symbol.asyncIterator] === "function") {
+            let next = await result.next();
+            while (!next.done) {
+              const chunk = next.value as ChatMessage;
+
+              // Stream content deltas to the frontend
+              if (chunk.content) {
+                const contentStr =
+                  typeof chunk.content === "string"
+                    ? chunk.content
+                    : chunk.content
+                        .filter((p: { type: string }) => p.type === "text")
+                        .map(
+                          (p: { type: string; text?: string }) => p.text ?? "",
+                        )
+                        .join("");
+
+                if (contentStr) {
+                  accumulatedContent += contentStr;
+                  this.sendToClient({
+                    messageType: "chat/send",
+                    messageId: msg.messageId,
+                    data: { content: contentStr },
+                    streaming: true,
+                    done: false,
+                  });
+                }
+              }
+
+              // Accumulate tool call deltas
+              if (
+                "toolCalls" in chunk &&
+                chunk.toolCalls &&
+                chunk.toolCalls.length > 0
+              ) {
+                accumulatedToolCalls = chunk.toolCalls;
+              }
+
+              next = await result.next();
+            }
+          }
+        } catch (err) {
+          console.error("[WebCoreMessenger] Error during llm/streamChat:", err);
+          this.sendToClient({
+            messageType: "chat/send",
+            messageId: msg.messageId,
+            data: null,
+            done: true,
+            error: (err as Error).message,
+          });
+          return;
+        }
+
+        // Append the assistant's response to the conversation history
+        const assistantMsg: ChatMessage = {
+          role: "assistant" as const,
+          content: accumulatedContent,
+          ...(accumulatedToolCalls.length > 0 && {
+            toolCalls: accumulatedToolCalls,
+          }),
+        };
+        conversationHistory.push(assistantMsg);
+
+        // If no tool calls, we're finished — break out of the loop
+        if (accumulatedToolCalls.length === 0) {
+          break;
+        }
+
+        // Execute each tool call and feed results back into history
+        for (const tc of accumulatedToolCalls) {
+          const toolName = tc.function?.name ?? "unknown";
+          const toolCallId = tc.id || randomUUID();
+          let rawArgs = tc.function?.arguments ?? "{}";
+
+          console.info(
+            `[WebCoreMessenger] Tool call: ${toolName} (id: ${toolCallId})`,
+          );
+
+          // Notify frontend: tool call is running
+          this.sendToClient({
+            messageType: "chat/send",
+            messageId: msg.messageId,
+            data: {
+              toolCall: {
+                id: toolCallId,
+                toolName,
+                args: rawArgs,
+                status: "calling",
+              },
+            },
+            streaming: true,
+            done: false,
+          });
+
+          let toolOutput = "";
+          let toolStatus: "done" | "errored" = "done";
+
+          try {
+            const parsedArgs = JSON.parse(rawArgs);
+            toolOutput = await this.executeTool(toolName, parsedArgs);
+          } catch (err) {
+            toolOutput = `Error executing tool '${toolName}': ${(err as Error).message}`;
+            toolStatus = "errored";
+            console.error(
+              `[WebCoreMessenger] Tool execution failed: ${toolName}`,
+              err,
+            );
+          }
+
+          // Notify frontend: tool call completed or errored
+          this.sendToClient({
+            messageType: "chat/send",
+            messageId: msg.messageId,
+            data: {
+              toolCall: {
+                id: toolCallId,
+                toolName,
+                args: rawArgs,
+                status: toolStatus,
+                output: toolOutput,
+              },
+            },
+            streaming: true,
+            done: false,
+          });
+
+          // Append tool result to conversation history
+          conversationHistory.push({
+            role: "tool" as const,
+            content: toolOutput,
+            toolCallId,
+          });
+        }
+
+        // Loop continues — will re-invoke streamChat with updated history
+        console.info(
+          `[WebCoreMessenger] Agent loop iteration ${iteration} complete, re-invoking LLM`,
+        );
+      }
+
+      if (iteration >= MAX_ITERATIONS) {
+        console.warn(
+          `[WebCoreMessenger] Agent loop hit maximum iterations (${MAX_ITERATIONS})`,
+        );
+      }
+
+      // Send the final "done" message
+      this.sendToClient({
+        messageType: "chat/send",
+        messageId: msg.messageId,
+        data: { done: true },
+        done: true,
+      });
+
+      return; // Don't fall through to the generic handler
     }
 
     // Route to registered Core handler
@@ -363,6 +575,101 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
     }
   }
 
+  /**
+   * Execute a tool call by dispatching to the appropriate WebIDE method.
+   *
+   * Supports the core built-in tools; unsupported tools return a descriptive
+   * message rather than throwing, so the LLM can recover gracefully.
+   */
+  private async executeTool(
+    toolName: string,
+    args: Record<string, any>,
+  ): Promise<string> {
+    switch (toolName) {
+      case "readFile":
+      case "read_file": {
+        const filePath = args.filepath ?? args.path ?? args.file;
+        return await this.webIde.readFile(filePath);
+      }
+
+      case "createNewFile":
+      case "create_new_file":
+      case "writeFile":
+      case "write_file": {
+        const filePath = args.filepath ?? args.path ?? args.file;
+        const contents = args.contents ?? args.content ?? "";
+        await this.webIde.writeFile(filePath, contents);
+        return "File written successfully.";
+      }
+
+      case "editFile":
+      case "edit_file": {
+        const filePath = args.filepath ?? args.path ?? args.file;
+        const contents = args.contents ?? args.content ?? "";
+        await this.webIde.writeFile(filePath, contents);
+        return "File edited successfully.";
+      }
+
+      case "runTerminalCommand":
+      case "run_terminal_command":
+      case "run_command":
+      case "subprocess": {
+        const command = args.command ?? args.cmd ?? "";
+        const cwd = args.cwd ?? undefined;
+        const [stdout, stderr] = await this.webIde.subprocess(command, cwd);
+        if (stderr) {
+          return `stdout:\n${stdout}\nstderr:\n${stderr}`;
+        }
+        return stdout || "(no output)";
+      }
+
+      case "listDir":
+      case "list_dir":
+      case "ls": {
+        const dir = args.path ?? args.dir ?? args.directory ?? ".";
+        const entries = await this.webIde.listDir(dir);
+        return entries
+          .map(([name, type]) => `${type === 2 ? "[dir] " : ""}${name}`)
+          .join("\n");
+      }
+
+      case "searchFiles":
+      case "search_files":
+      case "grep_search":
+      case "grepSearch": {
+        const query = args.query ?? args.pattern ?? args.search ?? "";
+        const maxResults = args.maxResults ?? 50;
+        return await this.webIde.getSearchResults(query, maxResults);
+      }
+
+      case "glob_search":
+      case "globSearch": {
+        const pattern = args.pattern ?? args.glob ?? "*";
+        const maxResults = args.maxResults ?? 100;
+        return await this.webIde.getFileResults(pattern, maxResults);
+      }
+
+      case "getDiff":
+      case "get_diff":
+      case "viewDiff":
+      case "view_diff": {
+        const includeUnstaged = args.includeUnstaged ?? true;
+        const diffs = await this.webIde.getDiff(includeUnstaged);
+        return diffs.join("\n---\n") || "(no diff)";
+      }
+
+      case "fileExists":
+      case "file_exists": {
+        const filePath = args.filepath ?? args.path ?? args.file;
+        const exists = await this.webIde.fileExists(filePath);
+        return exists ? "true" : "false";
+      }
+
+      default:
+        return `Tool '${toolName}' is not yet supported in the Web IDE. Available tools: readFile, writeFile, editFile, runTerminalCommand, listDir, searchFiles, globSearch, getDiff, fileExists.`;
+    }
+  }
+
   dispose(): void {
     for (const [, pending] of this.pendingRequests) {
       pending.reject(new Error("Connection closed"));
@@ -402,6 +709,10 @@ export class CoreManager {
 
     // Create the Core instance — this triggers initialisation
     const core = new Core(messenger, this.webIde);
+
+    // Wire up the config handler so the messenger can load tools
+    messenger.setConfigHandler(core.configHandler);
+
     this.cores.set(conn.id, { core, messenger });
 
     // Load config after core is created
