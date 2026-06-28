@@ -18,8 +18,11 @@ import ActivityBar from "./ActivityBar";
 import ChatPanel from "@/components/chat/ChatPanel";
 import EditorPanel from "@/components/editor/EditorPanel";
 import FileExplorer from "@/components/explorer/FileExplorer";
+import RulesPanel from "@/components/rules/RulesPanel";
+import SkillsPanel from "@/components/skills/SkillsPanel";
 import SettingsPanel from "@/components/settings/SettingsPanel";
 import TerminalPanel from "@/components/terminal/Terminal";
+import TokenTracker from "@/components/tokens/TokenTracker";
 import { useUIStore } from "@/stores/uiStore";
 
 function AppShell() {
@@ -33,11 +36,13 @@ function AppShell() {
   const terminalHeight = useUIStore((s) => s.terminalHeight);
   const setTerminalHeight = useUIStore((s) => s.setTerminalHeight);
 
-  // Whether the side panel (explorer/search/git) should be visible
+  // Whether the side panel (explorer/search/git/rules/skills) should be visible
   const showSidePanel =
     activeActivity === "explorer" ||
     activeActivity === "search" ||
-    activeActivity === "git";
+    activeActivity === "git" ||
+    activeActivity === "rules" ||
+    activeActivity === "skills";
 
   return (
     <div className="bg-nebula relative flex h-screen flex-col overflow-hidden">
@@ -67,6 +72,8 @@ function AppShell() {
                   <p className="text-sm">Git panel coming soon...</p>
                 </div>
               )}
+              {activeActivity === "rules" && <RulesPanel />}
+              {activeActivity === "skills" && <SkillsPanel />}
             </div>
 
             {/* Explorer resize handle */}
@@ -130,8 +137,13 @@ function AppShell() {
         )}
       </div>
 
-      {/* Status bar */}
-      <StatusBar />
+      {/* Status bar (with token tracker) */}
+      <div className="relative">
+        <StatusBar />
+        <div className="absolute right-32 top-1/2 -translate-y-1/2">
+          <TokenTracker />
+        </div>
+      </div>
 
       {/* Settings overlay — rendered above everything */}
       <SettingsPanel />

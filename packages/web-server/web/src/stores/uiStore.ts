@@ -7,7 +7,13 @@ import { create } from "zustand";
 export type SettingsTab = "config" | "models" | "general" | "about";
 
 /** Activity panel identifiers for the left-hand activity bar. */
-export type ActivityPanel = "explorer" | "search" | "git" | "chat";
+export type ActivityPanel =
+  | "explorer"
+  | "search"
+  | "git"
+  | "rules"
+  | "skills"
+  | "chat";
 
 interface UIState {
   // -- Settings panel ---

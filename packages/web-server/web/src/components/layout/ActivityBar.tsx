@@ -17,7 +17,9 @@ import {
   GitBranch,
   MessageSquare,
   Search,
+  ShieldCheck,
   Terminal,
+  Zap,
 } from "lucide-react";
 import { useUIStore, type ActivityPanel } from "@/stores/uiStore";
 
@@ -35,6 +37,8 @@ const ACTIVITIES: ActivityButton[] = [
   { id: "explorer", icon: FolderTree, label: "Explorer" },
   { id: "search", icon: Search, label: "Search" },
   { id: "git", icon: GitBranch, label: "Source Control" },
+  { id: "rules", icon: ShieldCheck, label: "Rules" },
+  { id: "skills", icon: Zap, label: "Skills" },
   { id: "chat", icon: MessageSquare, label: "Chat" },
 ];
 
