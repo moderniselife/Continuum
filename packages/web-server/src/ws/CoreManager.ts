@@ -6,7 +6,8 @@ import type { WebSocketConnection } from "./handler.js";
 import { Core } from "core/core.js";
 import type { ConfigHandler } from "core/config/ConfigHandler.js";
 import type { ToCoreProtocol, FromCoreProtocol } from "core/protocol/index.js";
-import type { ChatMessage, Tool, ToolCallDelta } from "core/index.js";
+import type { ChatMessage, Tool, ToolCall, ToolCallDelta } from "core/index.js";
+import { callTool } from "core/tools/callTool.js";
 import type { IMessenger, Message } from "core/protocol/messenger/index.js";
 import type { WebSocket } from "ws";
 import { v4 as uuidv4 } from "uuid";
@@ -332,9 +333,30 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
         );
       }
 
-      const conversationHistory: ChatMessage[] = [
-        { role: "user" as const, content: userContent },
-      ];
+      // Build conversation history, prepending context items if present
+      const contextItems = (chatPayload?.message as any)?.context as
+        | Array<{ name?: string; content?: string; type?: string }>
+        | undefined;
+
+      const conversationHistory: ChatMessage[] = [];
+
+      if (contextItems && contextItems.length > 0) {
+        const contextContent = contextItems
+          .map((item) => {
+            const name = item.name || "Unknown";
+            return `File: ${name}\n\`\`\`\n${item.content || ""}\n\`\`\``;
+          })
+          .join("\n\n");
+        conversationHistory.push({
+          role: "system" as const,
+          content: `The user has attached the following files as context:\n\n${contextContent}`,
+        });
+      }
+
+      conversationHistory.push({
+        role: "user" as const,
+        content: userContent,
+      });
 
       const MAX_ITERATIONS = 10;
       let iteration = 0;
@@ -469,7 +491,7 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
 
           try {
             const parsedArgs = JSON.parse(rawArgs);
-            toolOutput = await this.executeTool(toolName, parsedArgs);
+            toolOutput = await this.executeTool(toolName, parsedArgs, tools);
           } catch (err) {
             toolOutput = `Error executing tool '${toolName}': ${(err as Error).message}`;
             toolStatus = "error";
@@ -592,7 +614,41 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
   private async executeTool(
     toolName: string,
     args: Record<string, any>,
+    loadedTools?: Tool[],
   ): Promise<string> {
+    // Check if this is an MCP tool (has a URI) — delegate to Core's callTool
+    if (loadedTools) {
+      const matchingTool = loadedTools.find(
+        (t) => t.function?.name === toolName,
+      );
+      if (matchingTool?.uri) {
+        console.info(
+          `[WebCoreMessenger] Executing MCP tool via Core: ${toolName}`,
+        );
+        const toolCall: ToolCall = {
+          id: randomUUID(),
+          type: "function" as const,
+          function: {
+            name: toolName,
+            arguments: JSON.stringify(args),
+          },
+        };
+        const result = await callTool(matchingTool, toolCall, {
+          ide: this.webIde,
+          fetch: globalThis.fetch,
+          config: (await this._configHandler?.loadConfig())?.config,
+        } as any);
+        if (result.errorMessage) {
+          throw new Error(result.errorMessage);
+        }
+        return (
+          result.contextItems.map((item) => item.content).join("\n") ||
+          "(no output)"
+        );
+      }
+    }
+
+    // Built-in tool execution via WebIDE
     switch (toolName) {
       case "readFile":
       case "read_file": {
