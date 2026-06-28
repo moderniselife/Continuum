@@ -1,8 +1,13 @@
 /**
  * ChatInput — Message input area with auto-growing textarea.
- * Handles Enter-to-send, Shift+Enter for newlines, and displays
- * either a Send or Abort button based on streaming state.
- * Includes the ModeSelector below the textarea.
+ *
+ * Outer container uses glass-heavy with rounded-2xl. The textarea uses
+ * glass-input styling that auto-grows up to 8 rows. Below the textarea,
+ * the ModeSelector sits on the left and the Send/Abort button on the
+ * right. Send uses gradient-accent with glow; Abort uses a red-tinted
+ * glass style. A Cmd+Enter hint is shown next to the send button.
+ *
+ * @remarks Uses the Liquid Glass design language.
  */
 
 import {
@@ -17,7 +22,7 @@ import { useChatStore } from "@/stores/chatStore";
 import ModeSelector from "./ModeSelector";
 
 const MAX_ROWS = 8;
-const LINE_HEIGHT = 24; // Approximate line height in pixels
+const LINE_HEIGHT = 24;
 
 const ChatInput = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -25,7 +30,7 @@ const ChatInput = () => {
   const sendMessage = useChatStore((s) => s.sendMessage);
   const abortStreaming = useChatStore((s) => s.abortStreaming);
 
-  // Select primitive to avoid infinite re-render
+  // Select primitives to avoid infinite re-renders
   const tabs = useChatStore((s) => s.tabs);
   const activeTabId = useChatStore((s) => s.activeTabId);
   const activeTab = tabs.find((t) => t.id === activeTabId);
@@ -63,6 +68,13 @@ const ChatInput = () => {
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      // Cmd+Enter (macOS) or Ctrl+Enter to send
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        handleSend();
+        return;
+      }
+      // Plain Enter also sends (Shift+Enter for newlines)
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         handleSend();
@@ -74,42 +86,51 @@ const ChatInput = () => {
   const isEmpty = !value.trim();
 
   return (
-    <div className="bg-bg-surface border-border rounded-2xl border p-3">
-      {/* Input row */}
-      <div className="flex items-end gap-2">
-        <textarea
-          ref={textareaRef}
-          rows={1}
-          value={value}
-          placeholder="Send a message…"
-          onChange={handleChange}
-          onKeyDown={handleKeyDown}
-          className="bg-bg-elevated border-border focus:border-accent/50 text-text-primary placeholder:text-text-tertiary w-full resize-none rounded-xl border px-4 py-3 font-sans transition-all duration-150 focus:outline-none"
-        />
+    <div className="glass-heavy border-border-glass rounded-2xl border p-3">
+      {/* Textarea */}
+      <textarea
+        ref={textareaRef}
+        rows={1}
+        value={value}
+        placeholder="Send a message…"
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}
+        className="glass-input text-text-primary placeholder:text-text-tertiary w-full resize-none rounded-xl px-4 py-3 text-sm transition-all duration-200 focus:outline-none"
+      />
 
-        {isStreaming ? (
-          <button
-            onClick={() => abortStreaming()}
-            className="bg-error/20 hover:bg-error/30 text-error shrink-0 rounded-lg p-2 transition-all duration-150"
-            aria-label="Abort generation"
-          >
-            <Square size={18} />
-          </button>
-        ) : (
-          <button
-            onClick={handleSend}
-            disabled={isEmpty}
-            className={`bg-accent hover:bg-accent-hover shrink-0 rounded-lg p-2 text-white transition-all duration-150 ${isEmpty ? "cursor-not-allowed opacity-50" : ""} `}
-            aria-label="Send message"
-          >
-            <Send size={18} />
-          </button>
-        )}
-      </div>
-
-      {/* Mode selector row */}
-      <div className="mt-2">
+      {/* Bottom bar: ModeSelector left, hint + send/abort right */}
+      <div className="mt-2 flex items-center justify-between">
         <ModeSelector />
+
+        <div className="flex items-center gap-2">
+          {/* Keyboard shortcut hint */}
+          <span className="text-text-tertiary hidden text-[10px] sm:inline">
+            ⌘ Enter
+          </span>
+
+          {isStreaming ? (
+            <button
+              onClick={() => abortStreaming()}
+              className="glass flex h-8 w-8 items-center justify-center rounded-lg border border-red-500/30 text-red-400 transition-all duration-200 hover:border-red-500/50 hover:bg-red-500/10"
+              aria-label="Abort generation"
+            >
+              <Square size={16} />
+            </button>
+          ) : (
+            <button
+              onClick={handleSend}
+              disabled={isEmpty}
+              className={`gradient-accent glow-accent flex h-8 w-8 items-center justify-center rounded-lg text-white transition-all duration-200 ${
+                isEmpty
+                  ? "cursor-not-allowed opacity-40"
+                  : "gradient-accent-hover hover:scale-105"
+              }`}
+              aria-label="Send message"
+            >
+              <Send size={16} />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

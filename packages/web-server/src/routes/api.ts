@@ -279,13 +279,56 @@ router.get("/config", (_req: Request, res: Response) => {
   }
 });
 
+/** Returns the raw config file contents as a string (for Monaco editor). */
+router.get("/config/raw", (_req: Request, res: Response) => {
+  try {
+    const configPath = getConfigPath();
+    if (!fs.existsSync(configPath)) {
+      res.type("text/plain").send("");
+      return;
+    }
+    const content = fs.readFileSync(configPath, "utf-8");
+    res.type("text/plain").send(content);
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/** Returns the config file path (for display in settings). */
+router.get("/config/path", (_req: Request, res: Response) => {
+  try {
+    res.json({ path: getConfigPath() });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
 router.put("/config", (req: Request, res: Response) => {
   try {
     const configPath = getConfigPath();
-    const content =
-      typeof req.body === "string"
-        ? req.body
-        : JSON.stringify(req.body, null, 2);
+    let content: string;
+
+    if (typeof req.body === "string") {
+      content = req.body;
+    } else if (req.body?.content && typeof req.body.content === "string") {
+      content = req.body.content;
+    } else {
+      content = JSON.stringify(req.body, null, 2);
+    }
+
+    // Validate YAML syntax before writing
+    if (configPath.endsWith(".yaml") || configPath.endsWith(".yml")) {
+      try {
+        yaml.load(content);
+      } catch (yamlError) {
+        res.status(400).json({
+          error: "Invalid YAML syntax",
+          details: (yamlError as Error).message,
+        });
+        return;
+      }
+    }
+
     fs.writeFileSync(configPath, content, "utf-8");
     res.json({ updated: true });
   } catch (error) {

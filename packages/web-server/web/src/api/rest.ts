@@ -131,6 +131,48 @@ export function getConfig<T = Record<string, unknown>>(): Promise<T> {
   return apiFetch<T>("/config");
 }
 
+/** Get the raw config file contents as a string (for Monaco editor). */
+export async function getRawConfig(): Promise<string> {
+  const url = `${API_BASE}/config/raw`;
+  const response = await fetch(url, {
+    headers: buildHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch raw config (${response.status})`);
+  }
+  return response.text();
+}
+
+/** Get the config file path on disk. */
+export async function getConfigPath(): Promise<string> {
+  const data = await apiFetch<{ path: string }>("/config/path");
+  return data.path;
+}
+
+/** Save raw config content (YAML string) to disk with server-side validation. */
+export async function saveRawConfig(
+  content: string,
+): Promise<{ updated: boolean; error?: string; details?: string }> {
+  const url = `${API_BASE}/config`;
+  const response = await fetch(url, {
+    method: "PUT",
+    headers: {
+      ...buildHeaders(),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ content }),
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    return {
+      updated: false,
+      error: data.error ?? "Failed to save config",
+      details: data.details,
+    };
+  }
+  return { updated: true };
+}
+
 /** Partially update server configuration. */
 export function updateConfig(
   config: Record<string, unknown>,

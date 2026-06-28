@@ -144,12 +144,18 @@ export interface ModelInfo {
   id: string;
   /** Human-readable display name. */
   name: string;
+  /** Display title (alias for name in some config formats). */
+  title?: string;
   /** Provider name (e.g. "openai", "anthropic", "ollama"). */
   provider: string;
+  /** Model identifier as specified in config (e.g. "claude-sonnet-4-6"). */
+  model?: string;
   /** Maximum context window size in tokens. */
   contextLength?: number;
   /** Whether streaming is supported. */
   supportsStreaming?: boolean;
+  /** Roles this model is configured for (e.g. "chat", "edit", "apply"). */
+  roles?: string[];
   /** Optional description or notes about the model. */
   description?: string;
 }
