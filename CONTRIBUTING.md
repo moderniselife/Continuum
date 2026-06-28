@@ -1,11 +1,11 @@
-# Contributing to Continue
+# Contributing to Continuum
 
 ## Table of Contents
 
-- [Contributing to Continue](#contributing-to-continue)
+- [Contributing to Continuum](#contributing-to-continue)
   - [Table of Contents](#table-of-contents)
 - [❤️ Ways to Contribute](#️-ways-to-contribute)
-  - [👋 Continue Contribution Ideas](#-continue-contribution-ideas)
+  - [👋 Continuum Contribution Ideas](#-continue-contribution-ideas)
   - [🐛 Report Bugs](#-report-bugs)
   - [✨ Suggest Enhancements](#-suggest-enhancements)
   - [📖 Updating / Improving Documentation](#-updating--improving-documentation)
@@ -15,7 +15,7 @@
   - [🧑‍💻 Contributing Code](#-contributing-code)
     - [Environment Setup](#environment-setup)
       - [Pre-requisites](#pre-requisites)
-      - [Fork the Continue Repository](#fork-the-continue-repository)
+      - [Fork the Continuum Repository](#fork-the-continue-repository)
       - [VS Code](#vs-code)
         - [Debugging](#debugging)
       - [JetBrains](#jetbrains)
@@ -29,23 +29,23 @@
   - [Contributing new LLM Providers/Models](#contributing-new-llm-providersmodels)
     - [Adding an LLM Provider](#adding-an-llm-provider)
     - [Adding Models](#adding-models)
-  - [📐 Continue Architecture](#-continue-architecture)
-    - [Continue VS Code Extension](#continue-vs-code-extension)
-    - [Continue JetBrains Extension](#continue-jetbrains-extension)
+  - [📐 Continuum Architecture](#-continue-architecture)
+    - [Continuum VS Code Extension](#continue-vs-code-extension)
+    - [Continuum JetBrains Extension](#continue-jetbrains-extension)
   - [Contributor License Agreement](#contributor-license-agreement-cla)
 
 # ❤️ Ways to Contribute
 
-## 👋 Continue Contribution Ideas
+## 👋 Continuum Contribution Ideas
 
 [This GitHub project board](https://github.com/orgs/continuedev/projects/2) is a list of ideas for how you can
-contribute to Continue. These aren't the only ways, but are a great starting point if you are new to the project. You
+contribute to Continuum. These aren't the only ways, but are a great starting point if you are new to the project. You
 can also browse the list
-of [good first issues](https://github.com/continuedev/continue/issues?q=is:issue%20state:open%20label:good-first-issue).
+of [good first issues](https://github.com/moderniselife/Continuum/issues?q=is:issue%20state:open%20label:good-first-issue).
 
 ## 🐛 Report Bugs
 
-If you find a bug, please [create an issue](https://github.com/continuedev/continue/issues) to report it! A great bug
+If you find a bug, please [create an issue](https://github.com/moderniselife/Continuum/issues) to report it! A great bug
 report includes:
 
 - A description of the bug
@@ -56,20 +56,20 @@ report includes:
 
 ## ✨ Suggest Enhancements
 
-Continue is quickly adding features, and we'd love to hear which are the most important to you. The best ways to suggest
+Continuum is actively adding features, and we'd love to hear which are the most important to you. The best ways to suggest
 an enhancement are:
 
 - Create an issue
 
   - First, check whether a similar proposal has already been made
-  - If not, [create an issue](https://github.com/continuedev/continue/issues)
+  - If not, [create an issue](https://github.com/moderniselife/Continuum/issues)
   - Please describe the enhancement in as much detail as you can, and why it would be useful
 
-- Join the [GitHub Discussions](https://github.com/continuedev/continue/discussions) and tell us about your idea
+- Join the [GitHub Discussions](https://github.com/moderniselife/Continuum/discussions) and tell us about your idea
 
 ## 📖 Updating / Improving Documentation
 
-Continue is continuously improving, but a feature isn't complete until it is reflected in the documentation! If you see
+Continuum is continuously improving, but a feature isn't complete until it is reflected in the documentation! If you see
 something out-of-date or missing, you can help by clicking "Edit this page" at the bottom of any page
 on [docs.continue.dev](https://docs.continue.dev).
 
@@ -129,9 +129,9 @@ Then, install Vite globally
 npm i -g vite
 ```
 
-#### Fork the Continue Repository
+#### Fork the Continuum Repository
 
-1. Go to the [Continue GitHub repository](https://github.com/continuedev/continue) and fork it to your GitHub account.
+1. Go to the [Continue GitHub repository](https://github.com/moderniselife/Continuum) and fork it to your GitHub account.
 
 2. Clone your forked repository to your local machine. Use: `git clone https://github.com/YOUR_USERNAME/continue.git`
 
@@ -192,7 +192,7 @@ To keep the Continue codebase clean and maintainable, we expect the following fr
 - Keep changes focused. Multiple unrelated fixes should be opened as separate PRs
 - Write or update tests for new functionality
 - Update relevant documentation in the `docs` folder
-- **For new features**: Include a short screen recording or screenshot demonstrating the new functionality. This makes it much easier for us as contributors to review and understand your changes. See [this PR](https://github.com/continuedev/continue/pull/6455) as a good example
+- **For new features**: Include a short screen recording or screenshot demonstrating the new functionality. This makes it much easier for us as contributors to review and understand your changes. See [this PR](https://github.com/moderniselife/Continuum/pull/6455) as a good example
 - Open a PR against the `main` branch. Make sure to fill in the PR template
 
 ### Formatting
@@ -233,7 +233,7 @@ When contributing, please update or create the appropriate tests to help verify 
 
 ### Getting Help
 
-Join the [GitHub Discussions](https://github.com/continuedev/continue/discussions) to engage with maintainers and other contributors.
+Join the [GitHub Discussions](https://github.com/moderniselife/Continuum/discussions) to engage with maintainers and other contributors.
 
 ## Contributing New LLM Providers/Models
 
@@ -241,7 +241,7 @@ Join the [GitHub Discussions](https://github.com/continuedev/continue/discussion
 
 Continue has support for more than a dozen different LLM "providers", making it easy to use models running on OpenAI,
 Ollama, Together, LM Studio, Msty, and more. You can find all of the existing
-providers [here](https://github.com/continuedev/continue/tree/main/core/llm/llms), and if you see one missing, you can
+providers [here](https://github.com/moderniselife/Continuum/tree/main/core/llm/llms), and if you see one missing, you can
 add it with the following steps:
 
 1. Create a new file in the `core/llm/llms` directory. The name of the file should be the name of the provider, and it

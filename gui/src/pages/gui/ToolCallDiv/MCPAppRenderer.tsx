@@ -145,7 +145,7 @@ export function McpAppRenderer({
   useEffect(() => {
     const bridge = new AppBridge(
       null,
-      { name: "Continue", version: "1.0.0" },
+      { name: "Continuum", version: "1.0.0" },
       {
         openLinks: {},
         logging: {},

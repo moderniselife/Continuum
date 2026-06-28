@@ -10,6 +10,7 @@ export { chat } from "./chat.js";
 export { listSessionsCommand } from "./ls.js";
 export { review } from "./review.js";
 export { serve } from "./serve.js";
+export { web } from "./web.js";
 
 export interface SlashCommand {
   name: string;

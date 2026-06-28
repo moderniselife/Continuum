@@ -16,6 +16,7 @@ import {
 import { createContext } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { isJetBrains } from "../util";
+import { isWebMode, getWebSocketTransport } from "./WebSocketTransport";
 
 interface vscode {
   postMessage(message: any): vscode;
@@ -80,6 +81,17 @@ export class IdeMessenger implements IIdeMessenger {
     data: any,
     messageId: string = uuidv4(),
   ) {
+    if (isWebMode()) {
+      // Web mode: send over WebSocket
+      const msg: Message = {
+        messageId,
+        messageType,
+        data,
+      };
+      getWebSocketTransport().postMessage(msg);
+      return;
+    }
+
     if (typeof vscode === "undefined") {
       if (isJetBrains()) {
         if (window.postIntellijMessage === undefined) {

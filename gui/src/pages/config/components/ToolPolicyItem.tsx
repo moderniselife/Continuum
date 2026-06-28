@@ -33,6 +33,7 @@ export function ToolPolicyItem(props: ToolPolicyItemProps) {
   );
   const [isExpanded, setIsExpanded] = useState(false);
   const mode = useAppSelector((state) => state.session.mode);
+  const yoloMode = useAppSelector((state) => state.ui.yoloMode);
 
   useEffect(() => {
     if (!policy) {
@@ -161,6 +162,11 @@ export function ToolPolicyItem(props: ToolPolicyItemProps) {
               </div>
             </Listbox>
           </div>
+          {yoloMode && policy !== "disabled" && (
+            <span className="text-2xs ml-1 font-semibold text-amber-400">
+              ⚡ YOLO
+            </span>
+          )}
         </div>
         <Tooltip id={disabledTooltipId}>
           {mode === "chat"

@@ -20,7 +20,7 @@ export async function activateExtension(context: vscode.ExtensionContext) {
 
     globalContext.update("hasShownUnsupportedPlatformWarning", true);
     void vscode.window.showInformationMessage(
-      `Continue detected that you are using ${platformTarget}. Due to native dependencies, Continue may not be able to start`,
+      `Continuum detected that you are using ${platformTarget}. Due to native dependencies, Continuum may not be able to start`,
     );
   }
 

@@ -8,6 +8,7 @@ import {
   selectToolCallsByStatus,
 } from "../../../../redux/selectors/selectToolCalls";
 import { cancelToolCall } from "../../../../redux/slices/sessionSlice";
+import { setYoloMode } from "../../../../redux/slices/uiSlice";
 import { callToolById } from "../../../../redux/thunks/callToolById";
 import { cancelStream } from "../../../../redux/thunks/cancelStream";
 import { logToolUsage } from "../../../../redux/util";
@@ -21,6 +22,7 @@ import { PendingApplyStatesToolbar } from "./PendingApplyStatesToolbar";
 import { PendingToolCallToolbar } from "./PendingToolCallToolbar";
 import { StreamingToolbar } from "./StreamingToolbar";
 import { TtsActiveToolbar } from "./TtsActiveToolbar";
+import { YoloModeWarning } from "./YoloModeWarning";
 
 // Keyboard shortcut detection utilities
 const isExecuteToolCallShortcut = (event: KeyboardEvent) => {
@@ -55,6 +57,7 @@ export function LumpToolbar() {
   const jetbrains = isJetBrains();
   const pendingToolCalls = useAppSelector(selectPendingToolCalls);
   const firstPendingToolCall = useAppSelector(selectFirstPendingToolCall);
+  const yoloMode = useAppSelector((state) => state.ui.yoloMode);
   const editApplyState = useAppSelector(
     (state) => state.editModeState.applyState,
   );
@@ -168,20 +171,69 @@ export function LumpToolbar() {
     runningTerminalCalls,
   ]);
 
+  // Auto-approve pending tool calls when YOLO mode is active
+  useEffect(() => {
+    if (yoloMode && pendingToolCalls.length > 0) {
+      pendingToolCalls.forEach((tc) => {
+        void dispatch(callToolById({ toolCallId: tc.toolCallId }));
+      });
+    }
+  }, [yoloMode, pendingToolCalls]);
+
+  // Keyboard shortcut: Cmd+Shift+Y to toggle YOLO mode
+  useEffect(() => {
+    const handleYoloShortcut = (event: KeyboardEvent) => {
+      const metaKey = event.metaKey || event.ctrlKey;
+      if (
+        metaKey &&
+        event.shiftKey &&
+        (event.key === "y" || event.key === "Y")
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        dispatch(setYoloMode(!yoloMode));
+      }
+    };
+    document.addEventListener("keydown", handleYoloShortcut);
+    return () => document.removeEventListener("keydown", handleYoloShortcut);
+  }, [yoloMode]);
+
+  const yoloWarning = yoloMode ? <YoloModeWarning /> : null;
+
   if (isApplying) {
-    return <IsApplyingToolbar />;
+    return (
+      <>
+        {yoloWarning}
+        <IsApplyingToolbar />
+      </>
+    );
   }
 
   if (isInEdit) {
     if (editApplyState.status === "done") {
-      return <EditOutcomeToolbar />;
+      return (
+        <>
+          {yoloWarning}
+          <EditOutcomeToolbar />
+        </>
+      );
     }
 
-    return <EditToolbar />;
+    return (
+      <>
+        {yoloWarning}
+        <EditToolbar />
+      </>
+    );
   }
 
   if (ttsActive) {
-    return <TtsActiveToolbar />;
+    return (
+      <>
+        {yoloWarning}
+        <TtsActiveToolbar />
+      </>
+    );
   }
 
   // Only show terminal streaming for actual terminal commands
@@ -189,24 +241,45 @@ export function LumpToolbar() {
     const count = runningTerminalCalls.length;
     const stopText = `Stop Terminal${count > 1 ? ` (${count})` : ""}`;
     return (
-      <StreamingToolbar onStop={handleStopAction} displayText={stopText} />
+      <>
+        {yoloWarning}
+        <StreamingToolbar onStop={handleStopAction} displayText={stopText} />
+      </>
     );
   }
 
   // Regular streaming (non-terminal)
   if (isStreaming) {
-    return <StreamingToolbar onStop={() => dispatch(cancelStream())} />;
+    return (
+      <>
+        {yoloWarning}
+        <StreamingToolbar onStop={() => dispatch(cancelStream())} />
+      </>
+    );
   }
 
   if (pendingToolCalls.length > 0) {
-    return <PendingToolCallToolbar />;
+    return (
+      <>
+        {yoloWarning}
+        <PendingToolCallToolbar />
+      </>
+    );
   }
 
   if (pendingApplyStates.length > 0) {
     return (
-      <PendingApplyStatesToolbar pendingApplyStates={pendingApplyStates} />
+      <>
+        {yoloWarning}
+        <PendingApplyStatesToolbar pendingApplyStates={pendingApplyStates} />
+      </>
     );
   }
 
-  return <BlockSettingsTopToolbar />;
+  return (
+    <>
+      {yoloWarning}
+      <BlockSettingsTopToolbar />
+    </>
+  );
 }

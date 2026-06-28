@@ -21,9 +21,26 @@ async function evaluateToolPolicy(
   activeTools: Tool[],
   toolCallState: ToolCallState,
   toolPolicies: ToolPolicies,
+  yoloMode: boolean,
 ): Promise<EvaluatedPolicy> {
-  // allow edit tool calls without permission
+  // Allow edit tool calls without permission
   if (isEditTool(toolCallState.toolCall.function.name)) {
+    return { policy: "allowedWithoutPermission", toolCallState };
+  }
+
+  // YOLO mode: auto-approve all non-disabled tools without permission
+  if (yoloMode) {
+    const basePolicy =
+      toolPolicies[toolCallState.toolCall.function.name] ??
+      activeTools.find(
+        (tool) => tool.function.name === toolCallState.toolCall.function.name,
+      )?.defaultToolPolicy ??
+      DEFAULT_TOOL_SETTING;
+
+    if (basePolicy === "disabled") {
+      return { policy: "disabled", toolCallState };
+    }
+
     return { policy: "allowedWithoutPermission", toolCallState };
   }
 
@@ -77,6 +94,7 @@ export async function evaluateToolPolicies(
   activeTools: Tool[],
   generatedToolCalls: ToolCallState[],
   toolPolicies: ToolPolicies,
+  yoloMode: boolean,
 ): Promise<EvaluatedPolicy[]> {
   // Check if ALL tool calls are auto-approved using dynamic evaluation
   const policyResults = await Promise.all(
@@ -86,6 +104,7 @@ export async function evaluateToolPolicies(
         activeTools,
         toolCallState,
         toolPolicies,
+        yoloMode,
       ),
     ),
   );

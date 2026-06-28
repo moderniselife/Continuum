@@ -6,6 +6,11 @@ import App from "./App";
 import "./index.css";
 import { persistor, store } from "./redux/store";
 
+// Import web theme for browser mode (provides VS Code CSS variable defaults)
+if ((window as any).__CONTINUUM_WEB__) {
+  import("./styles/webTheme.css");
+}
+
 (async () => {
   const container = document.getElementById("root") as HTMLElement;
 
