@@ -2,7 +2,7 @@
   "name": "continuum",
   "icon": "media/icon.png",
   "author": "moderniselife",
-  "version": "1.3.40",
+  "version": "1.3.41",
   "repository": {
     "type": "git",
     "url": "https://github.com/moderniselife/Continuum"
@@ -13,7 +13,7 @@
   ],
   "bugs": {
     "url": "https://github.com/moderniselife/Continuum/issues",
-    "email": ""
+    "email": "joe@mojolayers.com"
   },
   "homepage": "https://github.com/moderniselife/Continuum",
   "qna": "https://github.com/moderniselife/Continuum/issues/new/choose",

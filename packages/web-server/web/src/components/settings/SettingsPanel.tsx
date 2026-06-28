@@ -5,27 +5,27 @@
  * Opens from the right side with glass backdrop overlay.
  */
 
-import { useEffect, useState, useCallback } from "react";
-import {
-  X,
-  FileCode2,
-  Cpu,
-  Settings2,
-  Info,
-  Save,
-  Check,
-  AlertTriangle,
-  Sparkles,
-  Shield,
-  Wrench,
-  Zap,
-} from "lucide-react";
-import Editor from "@monaco-editor/react";
-import { useUIStore, type SettingsTab } from "@/stores/uiStore";
+import { getConfigPath, getRawConfig, saveRawConfig } from "@/api/rest";
 import { useConfigStore } from "@/stores/configStore";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useSessionStore } from "@/stores/sessionStore";
-import { getRawConfig, saveRawConfig, getConfigPath } from "@/api/rest";
+import { useUIStore, type SettingsTab } from "@/stores/uiStore";
+import Editor from "@monaco-editor/react";
+import {
+  AlertTriangle,
+  Check,
+  Cpu,
+  FileCode2,
+  Info,
+  Save,
+  Settings2,
+  Shield,
+  Sparkles,
+  Wrench,
+  X,
+  Zap,
+} from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 
 const TABS: { id: SettingsTab; label: string; icon: typeof FileCode2 }[] = [
   { id: "config", label: "Config", icon: FileCode2 },
@@ -81,11 +81,10 @@ function SettingsPanel() {
               key={tab.id}
               type="button"
               onClick={() => setSettingsTab(tab.id)}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-150 ${
-                settingsTab === tab.id
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-150 ${settingsTab === tab.id
                   ? "bg-accent-muted text-accent glow-accent"
                   : "text-text-secondary hover:bg-bg-hover hover:text-text-primary"
-              }`}
+                }`}
             >
               <tab.icon size={14} />
               {tab.label}
@@ -189,9 +188,8 @@ function ConfigTab() {
         <div className="flex items-center gap-2">
           {saveResult && (
             <span
-              className={`flex items-center gap-1 text-xs ${
-                saveResult.ok ? "text-success" : "text-error"
-              }`}
+              className={`flex items-center gap-1 text-xs ${saveResult.ok ? "text-success" : "text-error"
+                }`}
             >
               {saveResult.ok ? (
                 <Check size={12} />
@@ -205,11 +203,10 @@ function ConfigTab() {
             type="button"
             onClick={handleSave}
             disabled={saving || !dirty}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-medium transition-all ${
-              dirty
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-medium transition-all ${dirty
                 ? "gradient-accent hover:glow-accent text-white"
                 : "bg-bg-elevated text-text-tertiary"
-            } disabled:opacity-50`}
+              } disabled:opacity-50`}
           >
             <Save size={12} />
             {saving ? "Saving..." : "Save"}
@@ -334,9 +331,8 @@ function GeneralTab() {
         value={isConnected ? "Connected" : "Disconnected"}
       >
         <span
-          className={`inline-block h-2 w-2 rounded-full ${
-            isConnected ? "bg-success animate-pulse-glow" : "bg-error"
-          }`}
+          className={`inline-block h-2 w-2 rounded-full ${isConnected ? "bg-success animate-pulse-glow" : "bg-error"
+            }`}
         />
       </InfoRow>
       <InfoRow label="Total Sessions" value={String(sessions.length)} />
@@ -376,7 +372,7 @@ function AboutTab() {
         <h3 className="text-text-primary text-lg font-bold">Continuum</h3>
         <p className="text-text-secondary text-sm">Open-source AI code agent</p>
         <span className="bg-bg-elevated text-text-tertiary rounded-full px-3 py-1 font-mono text-xs">
-          v1.3.40
+          v1.3.41
         </span>
       </div>
 
