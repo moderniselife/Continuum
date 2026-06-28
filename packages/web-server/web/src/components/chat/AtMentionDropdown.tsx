@@ -209,11 +209,28 @@ const AtMentionDropdown: React.FC<AtMentionDropdownProps> = ({
   }, [query]);
 
   // Extract sub-query for file search (text after "@file ")
+  // If the query doesn't match any provider prefix, treat the entire
+  // query as a file search — this lets users type @MCMCombobox directly
+  // to search for files without first selecting @file.
   useEffect(() => {
     if (matchedProvider?.id === "file") {
       const subQuery = query.slice(matchedProvider.id.length).trim();
       setFileQuery(subQuery);
       setLevel("files");
+    } else if (query.length > 0 && !matchedProvider) {
+      // No provider matched — check if query is a partial provider name
+      const q = query.toLowerCase();
+      const isPartialProvider = PROVIDERS.some(
+        (p) => p.enabled && p.label.startsWith(q),
+      );
+      if (!isPartialProvider) {
+        // Not a provider name prefix — auto-enter file search
+        setFileQuery(query);
+        setLevel("files");
+      } else {
+        setLevel("providers");
+        setFileQuery("");
+      }
     } else {
       setLevel("providers");
       setFileQuery("");
