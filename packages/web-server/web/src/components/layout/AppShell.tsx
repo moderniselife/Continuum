@@ -20,6 +20,8 @@ import EditorPanel from "@/components/editor/EditorPanel";
 import FileExplorer from "@/components/explorer/FileExplorer";
 import RulesPanel from "@/components/rules/RulesPanel";
 import SessionHistoryPanel from "@/components/sessions/SessionHistoryPanel";
+import SearchPanel from "@/components/search/SearchPanel";
+import GitPanel from "@/components/git/GitPanel";
 import SkillsPanel from "@/components/skills/SkillsPanel";
 import SettingsPanel from "@/components/settings/SettingsPanel";
 import TerminalPanel from "@/components/terminal/Terminal";
@@ -64,16 +66,8 @@ function AppShell() {
               style={{ width: explorerWidth }}
             >
               {activeActivity === "explorer" && <FileExplorer />}
-              {activeActivity === "search" && (
-                <div className="text-text-tertiary flex h-full items-center justify-center p-4">
-                  <p className="text-sm">Search coming soon...</p>
-                </div>
-              )}
-              {activeActivity === "git" && (
-                <div className="text-text-tertiary flex h-full items-center justify-center p-4">
-                  <p className="text-sm">Git panel coming soon...</p>
-                </div>
-              )}
+              {activeActivity === "search" && <SearchPanel />}
+              {activeActivity === "git" && <GitPanel />}
               {activeActivity === "history" && <SessionHistoryPanel />}
               {activeActivity === "rules" && <RulesPanel />}
               {activeActivity === "skills" && <SkillsPanel />}

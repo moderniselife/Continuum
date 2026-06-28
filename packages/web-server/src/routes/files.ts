@@ -2,7 +2,10 @@ import { Router, type Request, type Response } from "express";
 import { WebIDE } from "../ide/WebIDE.js";
 import * as path from "path";
 import * as fs from "fs";
-import { execSync } from "child_process";
+import { execSync, execFile } from "child_process";
+import { promisify } from "util";
+
+const execFileAsync = promisify(execFile);
 
 /**
  * Sensitive file extensions and patterns that should be blocked from
@@ -377,20 +380,190 @@ export function createFileRoutes(webIde: WebIDE): Router {
 
   /**
    * GET /files/search
-   * Searches for text content across workspace files using grep.
+   * Searches for text content across workspace files.
+   *
+   * Supports case-sensitive/regex modes, include/exclude glob filters,
+   * and returns structured results with match positions.
+   *
+   * Query params:
+   *   - q (required): search query text
+   *   - caseSensitive: "true"/"false" (default: false)
+   *   - regex: "true"/"false" (default: false)
+   *   - include: glob pattern for files to include (e.g. "*.ts")
+   *   - exclude: glob pattern for files to exclude (e.g. "node_modules")
+   *   - maxResults: maximum number of matches (default: 200)
    */
   router.get("/files/search", async (req: Request, res: Response) => {
     try {
-      const query = req.query.query as string | undefined;
-      const maxResults = parseInt((req.query.maxResults as string) ?? "50", 10);
+      const query = (req.query.q as string) ?? (req.query.query as string);
+      const caseSensitive = req.query.caseSensitive === "true";
+      const useRegex = req.query.regex === "true";
+      const include = req.query.include as string | undefined;
+      const exclude = req.query.exclude as string | undefined;
+      const maxResults = Math.min(
+        parseInt((req.query.maxResults as string) ?? "200", 10),
+        500,
+      );
 
       if (!query) {
-        res.status(400).json({ error: "Query parameter is required" });
+        res
+          .status(400)
+          .json({ error: "Query parameter 'q' or 'query' is required" });
         return;
       }
 
-      const results = await webIde.getSearchResults(query, maxResults);
-      res.json({ results, query });
+      const dirs = await getWorkspaceDirs();
+      if (dirs.length === 0) {
+        res.json({ results: [], totalMatches: 0, truncated: false });
+        return;
+      }
+
+      const cwd = dirs[0];
+
+      // Attempt to use ripgrep (rg) first, fall back to grep
+      let useRg = false;
+      try {
+        await execFileAsync("rg", ["--version"], { timeout: 3_000 });
+        useRg = true;
+      } catch {
+        // ripgrep not available — use grep
+      }
+
+      interface SearchMatch {
+        file: string;
+        line: number;
+        content: string;
+        matchStart: number;
+        matchEnd: number;
+      }
+
+      let results: SearchMatch[] = [];
+      let totalMatches = 0;
+      let truncated = false;
+
+      if (useRg) {
+        // ripgrep invocation
+        const args = [
+          "--line-number",
+          "--column",
+          "--no-heading",
+          "--color=never",
+          "--max-count",
+          String(maxResults),
+        ];
+
+        if (!caseSensitive) args.push("--ignore-case");
+        if (!useRegex) args.push("--fixed-strings");
+
+        if (include) {
+          // Support comma-separated globs
+          for (const g of include.split(",")) {
+            args.push("--glob", g.trim());
+          }
+        }
+        if (exclude) {
+          for (const g of exclude.split(",")) {
+            args.push("--glob", `!${g.trim()}`);
+          }
+        }
+
+        args.push("--", query, ".");
+
+        try {
+          const { stdout } = await execFileAsync("rg", args, {
+            cwd,
+            timeout: 30_000,
+            maxBuffer: 10 * 1024 * 1024,
+          });
+
+          const lines = stdout.split("\n").filter((l) => l.length > 0);
+          totalMatches = lines.length;
+          truncated = totalMatches >= maxResults;
+
+          for (const line of lines.slice(0, maxResults)) {
+            // Format: ./relative/path:line:column:content
+            const match = line.match(/^\.\/(.+?):(\d+):(\d+):(.*)$/);
+            if (match) {
+              const filePath = path.join(cwd, match[1]);
+              const lineNum = parseInt(match[2], 10);
+              const col = parseInt(match[3], 10) - 1; // 0-indexed
+              const content = match[4];
+
+              results.push({
+                file: filePath,
+                line: lineNum,
+                content,
+                matchStart: col,
+                matchEnd: col + query.length,
+              });
+            }
+          }
+        } catch (error) {
+          // rg returns exit code 1 when no matches found — that's fine
+          const err = error as { code?: number };
+          if (err.code !== 1) throw error;
+        }
+      } else {
+        // grep fallback
+        const args = ["-rnI", "--byte-offset"];
+
+        if (!caseSensitive) args.push("-i");
+        if (!useRegex) args.push("-F");
+
+        if (include) {
+          for (const g of include.split(",")) {
+            args.push(`--include=${g.trim()}`);
+          }
+        }
+        if (exclude) {
+          for (const g of exclude.split(",")) {
+            args.push(`--exclude=${g.trim()}`);
+            args.push(`--exclude-dir=${g.trim()}`);
+          }
+        }
+
+        args.push("--", query, ".");
+
+        try {
+          const { stdout } = await execFileAsync("grep", args, {
+            cwd,
+            timeout: 30_000,
+            maxBuffer: 10 * 1024 * 1024,
+          });
+
+          const lines = stdout.split("\n").filter((l) => l.length > 0);
+          totalMatches = lines.length;
+          truncated = totalMatches > maxResults;
+
+          for (const line of lines.slice(0, maxResults)) {
+            // Format: ./relative/path:line:content
+            const match = line.match(/^\.\/(.+?):(\d+):(.*)$/);
+            if (match) {
+              const filePath = path.join(cwd, match[1]);
+              const lineNum = parseInt(match[2], 10);
+              const content = match[3];
+              const matchIdx = caseSensitive
+                ? content.indexOf(query)
+                : content.toLowerCase().indexOf(query.toLowerCase());
+
+              results.push({
+                file: filePath,
+                line: lineNum,
+                content,
+                matchStart: matchIdx >= 0 ? matchIdx : 0,
+                matchEnd:
+                  matchIdx >= 0 ? matchIdx + query.length : query.length,
+              });
+            }
+          }
+        } catch (error) {
+          // grep returns exit code 1 when no matches found — that's fine
+          const err = error as { code?: number };
+          if (err.code !== 1) throw error;
+        }
+      }
+
+      res.json({ results, totalMatches, truncated });
     } catch (error) {
       res.status(500).json({
         error: "Failed to search files",

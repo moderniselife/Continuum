@@ -10,6 +10,7 @@ import apiRoutes from "./routes/api.js";
 import { createFileRoutes } from "./routes/files.js";
 import { createRulesRoutes } from "./routes/rules.js";
 import { createSkillsRoutes } from "./routes/skills.js";
+import { createGitRoutes } from "./routes/git.js";
 import {
   createTerminalRoutes,
   handleTerminalMessage,
@@ -71,6 +72,7 @@ export function createContinuumServer(options: ServerOptions) {
   app.use("/api/v1", createTerminalRoutes());
   app.use("/api/v1", createRulesRoutes(webIde));
   app.use("/api/v1", createSkillsRoutes(webIde));
+  app.use("/api/v1/git", createGitRoutes(options.workspaceDirs));
 
   // ============================================================
   // Static GUI Serving
