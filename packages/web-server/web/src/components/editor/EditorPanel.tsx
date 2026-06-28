@@ -198,6 +198,10 @@ const resolvedImportSources = new Set<string>();
  * Resolves relative and path-alias imports from a file, fetches their
  * content from the backend, and registers them as extra libs in Monaco
  * so that cross-file references and IntelliSense work correctly.
+ *
+ * For path-alias imports (@/, ~/), we register the resolved file content
+ * as a declaration module so Monaco's TS worker can resolve the alias
+ * without needing real filesystem access.
  */
 async function loadRelativeImports(
   monaco: Monaco,
@@ -222,7 +226,11 @@ async function loadRelativeImports(
 
     const { resolved } = await resolveImports(filePath, resolvableImports);
 
-    for (const { path: resolvedPath, content: fileContent } of resolved) {
+    for (const {
+      specifier,
+      path: resolvedPath,
+      content: fileContent,
+    } of resolved) {
       // Register as a model so Monaco's TS worker can resolve references
       const lang =
         resolvedPath.endsWith(".tsx") || resolvedPath.endsWith(".jsx")
@@ -231,6 +239,24 @@ async function loadRelativeImports(
             ? "typescript"
             : "javascript";
       getOrCreateModel(monaco, resolvedPath, fileContent, lang);
+
+      // For path-alias imports (@/, ~/), also register a declaration
+      // module so Monaco's TS worker can resolve the alias specifier.
+      // Monaco can't resolve tsconfig paths on its own — it needs the
+      // content registered at a URI matching the import specifier.
+      if (specifier?.startsWith("@/") || specifier?.startsWith("~/")) {
+        // Strip the extension from the specifier if present
+        const declUri = `file:///node_modules/${specifier}/index.d.ts`;
+        const existing = monaco.editor.getModel(monaco.Uri.parse(declUri));
+        if (!existing) {
+          // Re-export everything from the real path so types flow through
+          const realUri = `file://${resolvedPath}`;
+          monaco.languages.typescript.typescriptDefaults.addExtraLib(
+            `export * from "${realUri}";\nexport { default } from "${realUri}";`,
+            declUri,
+          );
+        }
+      }
     }
 
     if (resolved.length > 0) {

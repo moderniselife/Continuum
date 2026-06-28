@@ -1264,7 +1264,13 @@ export function createFileRoutes(webIde: WebIDE): Router {
       try {
         const tsconfigPath = findTsconfigFor(sourcePath, baseDir);
         if (tsconfigPath) {
-          const tsconfig = JSON.parse(fs.readFileSync(tsconfigPath, "utf-8"));
+          const raw = fs.readFileSync(tsconfigPath, "utf-8");
+          // Strip JSONC comments (// and /* */) before parsing —
+          // tsconfig files commonly contain comments
+          const stripped = raw
+            .replace(/\/\/.*$/gm, "")
+            .replace(/\/\*[\s\S]*?\*\//g, "");
+          const tsconfig = JSON.parse(stripped);
           const tsconfigDir = path.dirname(tsconfigPath);
           tsconfigBaseUrl = tsconfig.compilerOptions?.baseUrl || ".";
           pathAliases = tsconfig.compilerOptions?.paths || {};
