@@ -26,21 +26,21 @@ const modes: {
     label: "Chat",
     icon: MessageCircle,
     bgClass: "bg-mode-chat",
-    glowClass: "shadow-[0_0_12px_rgba(124,106,255,0.4)]",
+    glowClass: "shadow-[0_0_12px_rgba(0,255,135,0.35)]",
   },
   {
     id: "agent",
     label: "Agent",
     icon: Bot,
     bgClass: "bg-mode-agent",
-    glowClass: "shadow-[0_0_12px_rgba(52,211,153,0.4)]",
+    glowClass: "shadow-[0_0_12px_rgba(86,200,255,0.35)]",
   },
   {
     id: "plan",
     label: "Plan",
     icon: ClipboardList,
     bgClass: "bg-mode-plan",
-    glowClass: "shadow-[0_0_12px_rgba(251,191,36,0.4)]",
+    glowClass: "shadow-[0_0_12px_rgba(255,179,71,0.35)]",
   },
 ];
 
