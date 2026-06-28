@@ -137,6 +137,40 @@ export async function loadProjectTsconfig(
     const jsxStr = String(opts.jsx ?? "react-jsx").toLowerCase();
     const moduleResStr = String(opts.moduleResolution ?? "node").toLowerCase();
 
+    // Resolve baseUrl to an absolute file:// URI relative to tsconfig dir.
+    // Monaco's TS worker can't resolve relative baseUrl values like "."
+    // because it has no concept of the project's filesystem location.
+    const tsconfigDir = tsconfig.path
+      ? tsconfig.path.replace(/\/[^/]+$/, "")
+      : "";
+    const rawBaseUrl = (opts.baseUrl as string) ?? ".";
+    const rawPaths = (opts.paths as Record<string, string[]>) ?? {};
+
+    // Compute absolute baseUrl: resolve rawBaseUrl against tsconfig dir
+    // e.g. tsconfigDir="/Users/.../apps/web", baseUrl="." → "/Users/.../apps/web"
+    let absoluteBaseUrl: string;
+    if (rawBaseUrl.startsWith("/")) {
+      absoluteBaseUrl = rawBaseUrl;
+    } else {
+      // Resolve relative baseUrl against tsconfig directory
+      absoluteBaseUrl = `${tsconfigDir}/${rawBaseUrl}`.replace(
+        /\/\.(?=\/|$)/g,
+        "",
+      );
+    }
+
+    // Convert paths values to absolute file:// URIs
+    // e.g. "@/*": ["./src/*"] → "@/*": ["file:///Users/.../apps/web/src/*"]
+    const resolvedPaths: Record<string, string[]> = {};
+    for (const [key, values] of Object.entries(rawPaths)) {
+      resolvedPaths[key] = values.map((v) => {
+        if (v.startsWith("/")) return `file://${v}`;
+        // Resolve relative to absoluteBaseUrl
+        const resolved = `${absoluteBaseUrl}/${v}`.replace(/\/\.(?=\/|$)/g, "");
+        return `file://${resolved}`;
+      });
+    }
+
     const compilerOptions = {
       target: targetMap[targetStr] ?? ts.ScriptTarget.ESNext,
       module: moduleMap[moduleStr] ?? ts.ModuleKind.ESNext,
@@ -153,8 +187,8 @@ export async function loadProjectTsconfig(
       resolveJsonModule: (opts.resolveJsonModule as boolean) ?? true,
       skipLibCheck: true,
       forceConsistentCasingInFileNames: true,
-      baseUrl: (opts.baseUrl as string) ?? ".",
-      paths: (opts.paths as Record<string, string[]>) ?? {},
+      baseUrl: `file://${absoluteBaseUrl}`,
+      paths: resolvedPaths,
     };
 
     tsDefaults.setCompilerOptions(compilerOptions);

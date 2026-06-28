@@ -240,22 +240,17 @@ async function loadRelativeImports(
             : "javascript";
       getOrCreateModel(monaco, resolvedPath, fileContent, lang);
 
-      // For path-alias imports (@/, ~/), also register a declaration
-      // module so Monaco's TS worker can resolve the alias specifier.
-      // Monaco can't resolve tsconfig paths on its own — it needs the
-      // content registered at a URI matching the import specifier.
+      // For path-alias imports (@/, ~/), also register as an extraLib
+      // at the absolute file:// URI. This ensures Monaco's TS worker
+      // sees the content when resolving the alias via paths config.
+      // The model registration above handles editor navigation; this
+      // handles the TS language service's type resolution.
       if (specifier?.startsWith("@/") || specifier?.startsWith("~/")) {
-        // Strip the extension from the specifier if present
-        const declUri = `file:///node_modules/${specifier}/index.d.ts`;
-        const existing = monaco.editor.getModel(monaco.Uri.parse(declUri));
-        if (!existing) {
-          // Re-export everything from the real path so types flow through
-          const realUri = `file://${resolvedPath}`;
-          monaco.languages.typescript.typescriptDefaults.addExtraLib(
-            `export * from "${realUri}";\nexport { default } from "${realUri}";`,
-            declUri,
-          );
-        }
+        const fileUri = `file://${resolvedPath}`;
+        monaco.languages.typescript.typescriptDefaults.addExtraLib(
+          fileContent,
+          fileUri,
+        );
       }
     }
 
