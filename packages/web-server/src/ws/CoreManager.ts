@@ -449,7 +449,7 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
                 id: toolCallId,
                 toolName,
                 args: rawArgs,
-                status: "calling",
+                status: "running",
               },
             },
             streaming: true,
@@ -457,14 +457,14 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
           });
 
           let toolOutput = "";
-          let toolStatus: "done" | "errored" = "done";
+          let toolStatus: "completed" | "error" = "completed";
 
           try {
             const parsedArgs = JSON.parse(rawArgs);
             toolOutput = await this.executeTool(toolName, parsedArgs);
           } catch (err) {
             toolOutput = `Error executing tool '${toolName}': ${(err as Error).message}`;
-            toolStatus = "errored";
+            toolStatus = "error";
             console.error(
               `[WebCoreMessenger] Tool execution failed: ${toolName}`,
               err,
