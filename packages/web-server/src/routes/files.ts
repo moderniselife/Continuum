@@ -501,5 +501,260 @@ export function createFileRoutes(webIde: WebIDE): Router {
     }
   });
 
+  // ============================================================
+  // TypeScript / IntelliSense Support
+  // ============================================================
+
+  /**
+   * GET /tsconfig
+   * Finds and returns the nearest tsconfig.json for a given file path,
+   * walking up the directory tree from the file's location.
+   */
+  router.get("/tsconfig", async (req: Request, res: Response) => {
+    try {
+      const filePath = (req.query.path as string) || "";
+      const dirs = await getWorkspaceDirs();
+      let searchDir = filePath
+        ? path.dirname(path.resolve(filePath))
+        : dirs[0] || process.cwd();
+
+      // Walk up from the file until we find a tsconfig.json or hit workspace root
+      const workspaceRoot = dirs[0] || "/";
+      let tsconfig: Record<string, unknown> | null = null;
+      let tsconfigPath = "";
+
+      while (searchDir.length >= workspaceRoot.length) {
+        const candidate = path.join(searchDir, "tsconfig.json");
+        if (fs.existsSync(candidate)) {
+          try {
+            const raw = fs.readFileSync(candidate, "utf-8");
+            // Strip JSON comments (// and /* */) before parsing
+            const stripped = raw
+              .replace(/\/\/.*$/gm, "")
+              .replace(/\/\*[\s\S]*?\*\//g, "");
+            tsconfig = JSON.parse(stripped);
+            tsconfigPath = candidate;
+          } catch {
+            // Malformed tsconfig — keep searching upwards
+          }
+          break;
+        }
+        const parent = path.dirname(searchDir);
+        if (parent === searchDir) break;
+        searchDir = parent;
+      }
+
+      res.json({
+        found: tsconfig !== null,
+        path: tsconfigPath,
+        compilerOptions: tsconfig?.compilerOptions ?? {},
+      });
+    } catch (error) {
+      res.status(500).json({
+        error: "Failed to locate tsconfig",
+        details: (error as Error).message,
+      });
+    }
+  });
+
+  /**
+   * GET /types/package
+   * Returns the main `.d.ts` declaration file for a given npm package.
+   * Searches the workspace's node_modules for the package's type definitions.
+   *
+   * Query: ?name=react&dir=/path/to/workspace
+   */
+  router.get("/types/package", async (req: Request, res: Response) => {
+    try {
+      const packageName = req.query.name as string;
+      const baseDir =
+        (req.query.dir as string) || (await getWorkspaceDirs())[0];
+
+      if (!packageName) {
+        res.status(400).json({ error: "Package name is required" });
+        return;
+      }
+
+      const declarations: Array<{ path: string; content: string }> = [];
+
+      // Strategy 1: Check @types/<package>
+      const atTypesDir = path.join(
+        baseDir,
+        "node_modules",
+        "@types",
+        packageName.replace(/^@/, "").replace(/\//, "__"),
+      );
+      if (fs.existsSync(atTypesDir)) {
+        collectDeclarationFiles(atTypesDir, declarations, 5);
+      }
+
+      // Strategy 2: Check package's own types (package.json "types" or "typings" field)
+      const pkgDir = path.join(baseDir, "node_modules", packageName);
+      const pkgJsonPath = path.join(pkgDir, "package.json");
+      if (fs.existsSync(pkgJsonPath)) {
+        try {
+          const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
+          const typesEntry =
+            pkgJson.types ||
+            pkgJson.typings ||
+            pkgJson.main?.replace(/\.js$/, ".d.ts");
+          if (typesEntry) {
+            const typesPath = path.join(pkgDir, typesEntry);
+            if (fs.existsSync(typesPath)) {
+              declarations.push({
+                path: typesPath,
+                content: fs.readFileSync(typesPath, "utf-8"),
+              });
+            }
+          }
+        } catch {
+          // Ignore malformed package.json
+        }
+      }
+
+      // Strategy 3: Look for index.d.ts in the package root
+      const indexDts = path.join(pkgDir, "index.d.ts");
+      if (
+        fs.existsSync(indexDts) &&
+        !declarations.some((d) => d.path === indexDts)
+      ) {
+        declarations.push({
+          path: indexDts,
+          content: fs.readFileSync(indexDts, "utf-8"),
+        });
+      }
+
+      res.json({
+        package: packageName,
+        found: declarations.length > 0,
+        declarations,
+      });
+    } catch (error) {
+      res.status(500).json({
+        error: "Failed to load type declarations",
+        details: (error as Error).message,
+      });
+    }
+  });
+
+  /**
+   * POST /types/resolve
+   * Given a list of import specifiers, resolves and returns type declarations
+   * for each. Used by the editor to batch-load types for a file's imports.
+   *
+   * Body: { imports: string[], dir?: string }
+   */
+  router.post("/types/resolve", async (req: Request, res: Response) => {
+    try {
+      const { imports, dir } = req.body as {
+        imports: string[];
+        dir?: string;
+      };
+      const baseDir = dir || (await getWorkspaceDirs())[0];
+      const results: Record<
+        string,
+        Array<{ path: string; content: string }>
+      > = {};
+
+      for (const specifier of imports ?? []) {
+        // Skip relative imports — those are handled by model registration
+        if (
+          specifier.startsWith("./") ||
+          specifier.startsWith("../") ||
+          specifier.startsWith("/")
+        ) {
+          continue;
+        }
+
+        // Extract package name from specifier (e.g. "react/jsx-runtime" → "react")
+        const pkgName = specifier.startsWith("@")
+          ? specifier.split("/").slice(0, 2).join("/")
+          : specifier.split("/")[0];
+
+        if (results[pkgName]) continue; // Already resolved
+
+        const declarations: Array<{ path: string; content: string }> = [];
+
+        // Check @types
+        const atTypesDir = path.join(
+          baseDir,
+          "node_modules",
+          "@types",
+          pkgName.replace(/^@/, "").replace(/\//, "__"),
+        );
+        if (fs.existsSync(atTypesDir)) {
+          collectDeclarationFiles(atTypesDir, declarations, 3);
+        }
+
+        // Check package's own types
+        const pkgDir = path.join(baseDir, "node_modules", pkgName);
+        const indexDts = path.join(pkgDir, "index.d.ts");
+        if (
+          fs.existsSync(indexDts) &&
+          !declarations.some((d) => d.path === indexDts)
+        ) {
+          declarations.push({
+            path: indexDts,
+            content: fs.readFileSync(indexDts, "utf-8"),
+          });
+        }
+
+        if (declarations.length > 0) {
+          results[pkgName] = declarations;
+        }
+      }
+
+      res.json({ results });
+    } catch (error) {
+      res.status(500).json({
+        error: "Failed to resolve type declarations",
+        details: (error as Error).message,
+      });
+    }
+  });
+
   return router;
+}
+
+/**
+ * Recursively collects `.d.ts` files from a directory, up to a max depth.
+ * Limits total files to prevent loading huge type packages.
+ */
+function collectDeclarationFiles(
+  dir: string,
+  results: Array<{ path: string; content: string }>,
+  maxDepth: number,
+  currentDepth = 0,
+  maxFiles = 20,
+): void {
+  if (currentDepth > maxDepth || results.length >= maxFiles) return;
+
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (results.length >= maxFiles) break;
+
+      const entryPath = path.join(dir, entry.name);
+      if (entry.isDirectory() && entry.name !== "node_modules") {
+        collectDeclarationFiles(
+          entryPath,
+          results,
+          maxDepth,
+          currentDepth + 1,
+          maxFiles,
+        );
+      } else if (entry.isFile() && entry.name.endsWith(".d.ts")) {
+        try {
+          results.push({
+            path: entryPath,
+            content: fs.readFileSync(entryPath, "utf-8"),
+          });
+        } catch {
+          // Skip unreadable files
+        }
+      }
+    }
+  } catch {
+    // Skip unreadable directories
+  }
 }

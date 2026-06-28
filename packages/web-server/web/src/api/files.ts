@@ -221,3 +221,39 @@ export function getGitStatus(): Promise<GitStatusResult> {
 export function getGitBranch(): Promise<GitBranchResult> {
   return apiFetch<GitBranchResult>("/git/branch");
 }
+
+// ---------------------------------------------------------------------------
+// Public API — TypeScript / IntelliSense
+// ---------------------------------------------------------------------------
+
+export interface TsconfigResult {
+  found: boolean;
+  path: string;
+  compilerOptions: Record<string, unknown>;
+}
+
+export interface TypeDeclaration {
+  path: string;
+  content: string;
+}
+
+export interface TypesResolveResult {
+  results: Record<string, TypeDeclaration[]>;
+}
+
+/** Fetch the nearest tsconfig.json for a given file path. */
+export function getTsconfig(filePath?: string): Promise<TsconfigResult> {
+  const params = filePath ? `?path=${encodeURIComponent(filePath)}` : "";
+  return apiFetch<TsconfigResult>(`/tsconfig${params}`);
+}
+
+/** Batch-resolve type declarations for a list of import specifiers. */
+export function resolveTypes(
+  imports: string[],
+  dir?: string,
+): Promise<TypesResolveResult> {
+  return apiFetch<TypesResolveResult>("/types/resolve", {
+    method: "POST",
+    body: JSON.stringify({ imports, dir }),
+  });
+}

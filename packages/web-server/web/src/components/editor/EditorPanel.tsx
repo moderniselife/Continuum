@@ -1,25 +1,43 @@
 /**
  * EditorPanel — Main code editor area for the Continuum Web IDE.
  *
- * When no files are open, displays a premium empty state with a glass card
- * and keyboard shortcut hints. When files are open, renders the EditorTabs
- * bar above a full-height Monaco Editor instance.
- *
- * Keyboard shortcuts:
+ * Features:
+ *  • Monaco Editor with full TypeScript/JavaScript IntelliSense
+ *  • Semantic + syntactic linting (red squiggles)
+ *  • Auto-loaded type declarations for imported packages
+ *  • Per-file models with independent undo history
  *  • ⌘S / Ctrl+S — Save the active file
+ *  • Empty state with keyboard shortcut hints
+ *
+ * @module components/editor/EditorPanel
  */
 
-import { useEffect, useCallback } from "react";
-import Editor from "@monaco-editor/react";
+import { useEffect, useCallback, useRef } from "react";
+import Editor, { type Monaco, type OnMount } from "@monaco-editor/react";
+import type { editor as MonacoEditor } from "monaco-editor";
 import { FileCode2, Search, Save } from "lucide-react";
 import { useFileStore } from "@/stores/fileStore";
 import { EditorTabs } from "@/components/editor/EditorTabs";
+import {
+  configureTypeScript,
+  getOrCreateModel,
+  extractImports,
+  isRelativeImport,
+  getPackageName,
+  registerTypeDeclarations,
+} from "@/utils/monacoSetup";
+import { resolveTypes } from "@/api/files";
+
+/** Tracks which packages have already had their types loaded. */
+const loadedPackages = new Set<string>();
 
 export function EditorPanel() {
   const { openFiles, activeFilePath, updateFileContent, saveFile } =
     useFileStore();
 
   const activeFile = openFiles.find((f) => f.path === activeFilePath) ?? null;
+  const monacoRef = useRef<Monaco | null>(null);
+  const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
 
   // ⌘S / Ctrl+S to save the active file
   const handleSave = useCallback(() => {
@@ -38,6 +56,48 @@ export function EditorPanel() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [handleSave]);
+
+  // Configure TypeScript defaults once when Monaco loads
+  const handleBeforeMount = useCallback((monaco: Monaco) => {
+    monacoRef.current = monaco;
+    configureTypeScript(monaco);
+  }, []);
+
+  // When the editor mounts, grab the reference
+  const handleMount: OnMount = useCallback((editor, monaco) => {
+    editorRef.current = editor;
+    monacoRef.current = monaco;
+  }, []);
+
+  // Whenever the active file changes, set the correct model and load types
+  useEffect(() => {
+    const monaco = monacoRef.current;
+    const editor = editorRef.current;
+    if (!monaco || !editor || !activeFile) return;
+
+    // Create or get the model for this file
+    const model = getOrCreateModel(
+      monaco,
+      activeFile.path,
+      activeFile.content,
+      activeFile.language,
+    );
+
+    // Only switch model if it's different from current
+    if (editor.getModel() !== model) {
+      editor.setModel(model);
+    }
+
+    // Also register all other open files as extra libs for cross-file refs
+    for (const file of openFiles) {
+      if (file.path !== activeFile.path) {
+        getOrCreateModel(monaco, file.path, file.content, file.language);
+      }
+    }
+
+    // Auto-load type declarations for imported packages
+    loadTypesForFile(monaco, activeFile.content);
+  }, [activeFilePath, activeFile?.path]);
 
   // Empty state — no files open
   if (!activeFile) {
@@ -74,16 +134,18 @@ export function EditorPanel() {
       {/* Monaco Editor */}
       <div className="monaco-container flex-1">
         <Editor
-          key={activeFile.path}
           height="100%"
           language={activeFile.language}
-          value={activeFile.content}
+          defaultValue={activeFile.content}
+          beforeMount={handleBeforeMount}
+          onMount={handleMount}
           onChange={(value) => {
             if (activeFile.path) {
               updateFileContent(activeFile.path, value ?? "");
             }
           }}
           theme="vs-dark"
+          path={activeFile.path}
           options={{
             minimap: { enabled: true },
             fontSize: 13,
@@ -100,11 +162,64 @@ export function EditorPanel() {
             scrollBeyondLastLine: true,
             renderLineHighlight: "all",
             roundedSelection: true,
+            // IntelliSense options
+            suggestOnTriggerCharacters: true,
+            quickSuggestions: {
+              other: true,
+              comments: false,
+              strings: true,
+            },
+            parameterHints: { enabled: true },
+            formatOnPaste: true,
+            formatOnType: true,
+            inlayHints: { enabled: "on" },
+            linkedEditing: true,
+            hover: { enabled: true, delay: 300 },
           }}
         />
       </div>
     </div>
   );
+}
+
+/* ── Auto-load types for imports ─────────────────────────────── */
+
+/**
+ * Scans the file content for imports and lazily loads type declarations
+ * from the backend for any unloaded npm packages.
+ */
+async function loadTypesForFile(
+  monaco: Monaco,
+  content: string,
+): Promise<void> {
+  try {
+    const imports = extractImports(content);
+    const npmImports = imports.filter((imp) => !isRelativeImport(imp));
+    const packages = [...new Set(npmImports.map(getPackageName))];
+
+    // Only load packages we haven't loaded yet
+    const unloaded = packages.filter((pkg) => !loadedPackages.has(pkg));
+    if (unloaded.length === 0) return;
+
+    // Mark them as loading to prevent duplicate requests
+    for (const pkg of unloaded) {
+      loadedPackages.add(pkg);
+    }
+
+    const { results } = await resolveTypes(
+      unloaded.map((pkg) => pkg), // Send package names as import specifiers
+    );
+
+    for (const [_pkg, declarations] of Object.entries(results)) {
+      registerTypeDeclarations(monaco, declarations);
+    }
+
+    console.info(
+      `[EditorPanel] Loaded types for: ${Object.keys(results).join(", ") || "none"}`,
+    );
+  } catch (err) {
+    console.warn("[EditorPanel] Failed to auto-load types:", err);
+  }
 }
 
 /* ── Helper: Shortcut hint row ───────────────────────────────── */
