@@ -33,8 +33,10 @@ export class HistoryManager {
     sessions = sessions
       .filter((session: any) => {
         // Filter out old format
-        return typeof session.session_id !== "string";
-        // Reverse to show newest first; sessions.json is chronological by creation
+        if (typeof session.session_id === "string") return false;
+        // Filter out sessions whose files no longer exist on disk
+        const sessionFile = getSessionFilePath(session.sessionId);
+        return fs.existsSync(sessionFile);
       })
       .reverse();
 
@@ -89,22 +91,20 @@ export class HistoryManager {
   }
 
   load(sessionId: string): Session {
+    const sessionFile = getSessionFilePath(sessionId);
+    if (!fs.existsSync(sessionFile)) {
+      throw new Error(
+        `Session file not found: ${sessionFile}. ` +
+          `The session may have been deleted or not migrated from ~/.continue to ~/.continuum.`,
+      );
+    }
     try {
-      const sessionFile = getSessionFilePath(sessionId);
-      if (!fs.existsSync(sessionFile)) {
-        throw new Error(`Session file ${sessionFile} does not exist`);
-      }
       const session: Session = JSON.parse(fs.readFileSync(sessionFile, "utf8"));
       session.sessionId = sessionId;
       return session;
     } catch (e) {
-      console.log(`Error loading session: ${e}`);
-      return {
-        history: [],
-        title: NEW_SESSION_TITLE,
-        workspaceDirectory: "",
-        sessionId: sessionId,
-      };
+      console.error(`[HistoryManager] Error parsing session ${sessionId}:`, e);
+      throw new Error(`Failed to parse session file: ${(e as Error).message}`);
     }
   }
 

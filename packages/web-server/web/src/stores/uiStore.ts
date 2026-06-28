@@ -18,6 +18,13 @@ interface UIState {
   sidebarOpen: boolean;
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
+
+  // -- Terminal ---
+  terminalOpen: boolean;
+  terminalHeight: number;
+  toggleTerminal: () => void;
+  setTerminalHeight: (height: number) => void;
+  closeTerminal: () => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -33,4 +40,12 @@ export const useUIStore = create<UIState>((set) => ({
   sidebarOpen: true,
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
+
+  // Terminal
+  terminalOpen: false,
+  terminalHeight: 240,
+  toggleTerminal: () => set((s) => ({ terminalOpen: !s.terminalOpen })),
+  setTerminalHeight: (height) =>
+    set({ terminalHeight: Math.max(120, Math.min(height, 600)) }),
+  closeTerminal: () => set({ terminalOpen: false }),
 }));
