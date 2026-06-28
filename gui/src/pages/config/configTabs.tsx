@@ -1,5 +1,6 @@
 import {
   ArrowLeftIcon,
+  BoltIcon,
   CircleStackIcon,
   Cog6ToothIcon,
   CubeIcon,
@@ -14,6 +15,7 @@ import { HelpSection } from "./sections/HelpSection";
 import { IndexingSettingsSection } from "./sections/IndexingSettingsSection";
 import { ModelsSection } from "./sections/ModelsSection";
 import { RulesSection } from "./sections/RulesSection";
+import { SkillsSection } from "./sections/SkillsSection";
 import { ToolsSection } from "./sections/ToolsSection";
 import { UserSettingsSection } from "./sections/UserSettingsSection";
 
@@ -67,6 +69,16 @@ export const topTabSections: TabSection[] = [
           </ConfigSection>
         ),
         icon: <PencilIcon className="xs:h-4 xs:w-4 h-3 w-3 flex-shrink-0" />,
+      },
+      {
+        id: "skills",
+        label: "Skills",
+        component: (
+          <ConfigSection>
+            <SkillsSection />
+          </ConfigSection>
+        ),
+        icon: <BoltIcon className="xs:h-4 xs:w-4 h-3 w-3 flex-shrink-0" />,
       },
       {
         id: "tools",
