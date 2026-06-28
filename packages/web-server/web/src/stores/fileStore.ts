@@ -141,17 +141,26 @@ export function getLanguage(filename: string): string {
 }
 
 /**
- * Convert a [name, type] tuple from the server into a `FileNode`.
+ * Convert a [fullPath, type] tuple from the server into a `FileNode`.
+ *
+ * The server's `listDir` returns full paths (e.g. `/Users/joe/project/src`),
+ * not bare filenames. We extract the basename for display and keep the
+ * full path for navigation.
+ *
  * Type: 1 = file, 2 = directory.
  */
-function entryToNode(name: string, type: number, parentPath: string): FileNode {
-  const path = parentPath.endsWith("/")
-    ? `${parentPath}${name}`
-    : `${parentPath}/${name}`;
+function entryToNode(
+  fullPath: string,
+  type: number,
+  _parentPath: string,
+): FileNode {
+  // Extract the basename for display — last segment of the path
+  const segments = fullPath.split("/");
+  const basename = segments[segments.length - 1] || fullPath;
 
   return {
-    name,
-    path,
+    name: basename,
+    path: fullPath,
     type: type === 2 ? "directory" : "file",
     children: type === 2 ? [] : undefined,
     isLoaded: type === 2 ? false : undefined,

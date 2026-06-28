@@ -148,11 +148,17 @@ interface ResizeHandleProps {
 
 /**
  * Draggable resize handle for panels.
- * Fires onResize with pixel delta during drag.
+ * Uses a ref for onResize to avoid stale closure issues during drag.
  */
 function ResizeHandle({ direction, onResize }: ResizeHandleProps) {
   const isDragging = useRef(false);
   const lastPos = useRef(0);
+  const onResizeRef = useRef(onResize);
+
+  // Always keep the ref pointing at the latest callback
+  useEffect(() => {
+    onResizeRef.current = onResize;
+  }, [onResize]);
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -165,7 +171,7 @@ function ResizeHandle({ direction, onResize }: ResizeHandleProps) {
         const pos = direction === "horizontal" ? ev.clientX : ev.clientY;
         const delta = pos - lastPos.current;
         lastPos.current = pos;
-        onResize(delta);
+        onResizeRef.current(delta);
       };
 
       const handleMouseUp = () => {
@@ -182,7 +188,7 @@ function ResizeHandle({ direction, onResize }: ResizeHandleProps) {
         direction === "horizontal" ? "col-resize" : "row-resize";
       document.body.style.userSelect = "none";
     },
-    [direction, onResize],
+    [direction],
   );
 
   const isH = direction === "horizontal";
