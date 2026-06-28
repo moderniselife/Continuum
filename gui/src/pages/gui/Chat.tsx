@@ -45,8 +45,6 @@ import { ToolCallDiv } from "./ToolCallDiv";
 
 import { useStore } from "react-redux";
 import FeedbackDialog from "../../components/dialogs/FeedbackDialog";
-import { TokenUsageBadge } from "../../components/chat/TokenUsageBadge";
-import useLLMLog from "../../hooks/useLLMLog";
 
 import { DeprecationBanner } from "../../components/DeprecationBanner";
 import { FatalErrorIndicator } from "../../components/config/FatalErrorNotice";
@@ -126,7 +124,6 @@ export function Chat() {
   const isInEdit = useAppSelector((store) => store.session.isInEdit);
 
   const lastSessionId = useAppSelector((state) => state.session.lastSessionId);
-  const llmLog = useLLMLog();
   const hasDismissedExploreDialog = useAppSelector(
     (state) => state.ui.hasDismissedExploreDialog,
   );
@@ -443,7 +440,6 @@ export function Chat() {
                 </NewSessionButton>
               )}
             </div>
-            <TokenUsageBadge llmLog={llmLog} />
           </div>
           <FatalErrorIndicator />
           {!hasDismissedExploreDialog && <ExploreDialogWatcher />}

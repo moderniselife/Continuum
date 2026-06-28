@@ -1,21 +1,16 @@
 /**
  * TokenUsageBadge — Compact inline badge showing current session token
- * usage and estimated cost. Designed to sit in the InputToolbar area.
+ * usage and estimated cost. Self-contained — calls useLLMLog internally.
  *
- * Reads from the console's LLM log via the useTotalUsage hook and
- * displays a "⚡ 1.2K · $0.003" style badge. Click to expand a
- * popover with full breakdown.
+ * Designed to sit in the InputToolbar next to model/mode selectors.
+ * Shows "⚡ 1.2K · $0.003" and expands on click to a full breakdown.
  *
  * @module components/chat/TokenUsageBadge
  */
 
-import { useState, useRef, useEffect, useMemo } from "react";
-import { LLMLog } from "../../hooks/useLLMLog";
+import { useEffect, useMemo, useRef, useState } from "react";
+import useLLMLog from "../../hooks/useLLMLog";
 import useTotalUsage from "../../hooks/useTotalUsage";
-
-interface TokenUsageBadgeProps {
-  llmLog: LLMLog;
-}
 
 /** Format a large token count to a human-readable string (e.g. 1234 → "1.2K"). */
 function formatTokens(count: number): string {
@@ -37,11 +32,12 @@ function formatCost(cost: number): string {
   }).format(cost);
 }
 
-export function TokenUsageBadge({ llmLog }: TokenUsageBadgeProps) {
+export function TokenUsageBadge() {
   const [showPopover, setShowPopover] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
   const badgeRef = useRef<HTMLButtonElement>(null);
 
+  const llmLog = useLLMLog();
   const usage = useTotalUsage(llmLog);
 
   const totalTokens = usage.totalPromptTokens + usage.totalGeneratedTokens;
@@ -70,7 +66,6 @@ export function TokenUsageBadge({ llmLog }: TokenUsageBadgeProps) {
     const map = new Map<string, { cost: number; detail: string }>();
 
     for (const bd of usage.costBreakdowns) {
-      // The breakdown string contains model info — extract first line as key
       const key = bd.breakdown.split("\n")[0]?.trim() || "Unknown";
       const existing = map.get(key) || { cost: 0, detail: bd.breakdown };
       existing.cost += bd.cost || 0;
@@ -83,25 +78,24 @@ export function TokenUsageBadge({ llmLog }: TokenUsageBadgeProps) {
     }));
   }, [usage.costBreakdowns]);
 
-  // Don't render if no usage yet
-  if (totalTokens === 0 && usage.totalInteractions === 0) {
-    return null;
-  }
-
   return (
-    <div className="relative inline-block">
+    <div className="relative inline-flex items-center">
       <button
         ref={badgeRef}
         onClick={() => setShowPopover(!showPopover)}
-        className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-gray-400 transition-colors hover:bg-gray-700 hover:text-gray-200"
+        className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] transition-colors hover:bg-[color:var(--vscode-toolbar-hoverBackground)]"
         title="Token usage — click for details"
       >
         <span>⚡</span>
-        <span>{formatTokens(totalTokens)}</span>
+        <span className="text-[color:var(--vscode-descriptionForeground)]">
+          {totalTokens > 0 ? formatTokens(totalTokens) : "0"}
+        </span>
         {usage.totalCost > 0 && (
           <>
-            <span className="text-gray-600">·</span>
-            <span className="text-green-400">
+            <span className="text-[color:var(--vscode-descriptionForeground)] opacity-40">
+              ·
+            </span>
+            <span style={{ color: "#4ade80" }}>
               {formatCost(usage.totalCost)}
             </span>
           </>
@@ -111,87 +105,115 @@ export function TokenUsageBadge({ llmLog }: TokenUsageBadgeProps) {
       {showPopover && (
         <div
           ref={popoverRef}
-          className="absolute bottom-full right-0 z-50 mb-2 w-72 rounded-lg border border-gray-600 bg-[color:var(--vscode-editor-background)] p-3 shadow-xl"
+          className="absolute bottom-full right-0 z-50 mb-2 w-72 rounded-lg border border-[color:var(--vscode-panel-border)] bg-[color:var(--vscode-editor-background)] p-3 shadow-xl"
         >
-          <div className="mb-3 text-xs font-semibold text-gray-200">
+          <div className="mb-3 text-xs font-semibold text-[color:var(--vscode-foreground)]">
             Session Token Usage
           </div>
 
-          {/* Summary stats */}
-          <div className="mb-3 grid grid-cols-3 gap-2">
-            <div className="rounded-md bg-gray-800 px-2 py-1.5 text-center">
-              <div className="text-[10px] text-gray-500">Input</div>
-              <div className="text-xs font-medium text-blue-400">
-                {formatTokens(usage.totalPromptTokens)}
-              </div>
+          {totalTokens === 0 && usage.totalInteractions === 0 ? (
+            <div className="py-2 text-center text-xs text-[color:var(--vscode-descriptionForeground)]">
+              No token usage yet this session.
+              <br />
+              Send a message to start tracking.
             </div>
-            <div className="rounded-md bg-gray-800 px-2 py-1.5 text-center">
-              <div className="text-[10px] text-gray-500">Output</div>
-              <div className="text-xs font-medium text-purple-400">
-                {formatTokens(usage.totalGeneratedTokens)}
-              </div>
-            </div>
-            <div className="rounded-md bg-gray-800 px-2 py-1.5 text-center">
-              <div className="text-[10px] text-gray-500">Total</div>
-              <div className="text-xs font-medium text-gray-200">
-                {formatTokens(totalTokens)}
-              </div>
-            </div>
-          </div>
-
-          {/* Additional stats */}
-          <div className="mb-3 flex items-center justify-between text-[10px]">
-            <div className="flex items-center gap-3">
-              {usage.totalThinkingTokens > 0 && (
-                <span className="text-gray-400">
-                  🧠 {formatTokens(usage.totalThinkingTokens)} thinking
-                </span>
-              )}
-              {usage.totalCachedTokens > 0 && (
-                <span className="text-gray-400">
-                  💾 {formatTokens(usage.totalCachedTokens)} cached
-                </span>
-              )}
-            </div>
-            <span className="text-gray-500">
-              {usage.totalInteractions} request
-              {usage.totalInteractions !== 1 ? "s" : ""}
-            </span>
-          </div>
-
-          {/* Cost breakdown by model */}
-          {costBreakdownByModel.length > 0 && (
+          ) : (
             <>
-              <div className="mb-1.5 text-[10px] font-semibold text-gray-400">
-                Cost by Model
-              </div>
-              <div className="flex flex-col gap-1">
-                {costBreakdownByModel.map((entry) => (
-                  <div
-                    key={entry.label}
-                    className="flex items-center justify-between rounded-sm px-1.5 py-1 text-[10px] hover:bg-gray-800"
-                  >
-                    <span className="truncate text-gray-300">
-                      {entry.label}
-                    </span>
-                    <span className="ml-2 font-mono text-green-400">
-                      {formatCost(entry.cost)}
-                    </span>
+              {/* Summary stats */}
+              <div className="mb-3 grid grid-cols-3 gap-2">
+                <div className="rounded-md bg-[color:var(--vscode-input-background)] px-2 py-1.5 text-center">
+                  <div className="text-[10px] text-[color:var(--vscode-descriptionForeground)]">
+                    Input
                   </div>
-                ))}
+                  <div
+                    className="text-xs font-medium"
+                    style={{ color: "#60a5fa" }}
+                  >
+                    {formatTokens(usage.totalPromptTokens)}
+                  </div>
+                </div>
+                <div className="rounded-md bg-[color:var(--vscode-input-background)] px-2 py-1.5 text-center">
+                  <div className="text-[10px] text-[color:var(--vscode-descriptionForeground)]">
+                    Output
+                  </div>
+                  <div
+                    className="text-xs font-medium"
+                    style={{ color: "#c084fc" }}
+                  >
+                    {formatTokens(usage.totalGeneratedTokens)}
+                  </div>
+                </div>
+                <div className="rounded-md bg-[color:var(--vscode-input-background)] px-2 py-1.5 text-center">
+                  <div className="text-[10px] text-[color:var(--vscode-descriptionForeground)]">
+                    Total
+                  </div>
+                  <div className="text-xs font-medium text-[color:var(--vscode-foreground)]">
+                    {formatTokens(totalTokens)}
+                  </div>
+                </div>
+              </div>
+
+              {/* Additional stats */}
+              <div className="mb-3 flex items-center justify-between text-[10px]">
+                <div className="flex items-center gap-3">
+                  {usage.totalThinkingTokens > 0 && (
+                    <span className="text-[color:var(--vscode-descriptionForeground)]">
+                      🧠 {formatTokens(usage.totalThinkingTokens)} thinking
+                    </span>
+                  )}
+                  {usage.totalCachedTokens > 0 && (
+                    <span className="text-[color:var(--vscode-descriptionForeground)]">
+                      💾 {formatTokens(usage.totalCachedTokens)} cached
+                    </span>
+                  )}
+                </div>
+                <span className="text-[color:var(--vscode-descriptionForeground)]">
+                  {usage.totalInteractions} request
+                  {usage.totalInteractions !== 1 ? "s" : ""}
+                </span>
+              </div>
+
+              {/* Cost breakdown by model */}
+              {costBreakdownByModel.length > 0 && (
+                <>
+                  <div className="mb-1.5 text-[10px] font-semibold text-[color:var(--vscode-descriptionForeground)]">
+                    Cost by Model
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    {costBreakdownByModel.map((entry) => (
+                      <div
+                        key={entry.label}
+                        className="flex items-center justify-between rounded-sm px-1.5 py-1 text-[10px] hover:bg-[color:var(--vscode-list-hoverBackground)]"
+                      >
+                        <span className="truncate text-[color:var(--vscode-foreground)]">
+                          {entry.label}
+                        </span>
+                        <span
+                          className="ml-2 font-mono"
+                          style={{ color: "#4ade80" }}
+                        >
+                          {formatCost(entry.cost)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {/* Total cost */}
+              <div className="mt-2 flex items-center justify-between border-t border-[color:var(--vscode-panel-border)] pt-2">
+                <span className="text-xs font-semibold text-[color:var(--vscode-foreground)]">
+                  Estimated Total
+                </span>
+                <span
+                  className="text-sm font-bold"
+                  style={{ color: "#4ade80" }}
+                >
+                  {formatCost(usage.totalCost)}
+                </span>
               </div>
             </>
           )}
-
-          {/* Total cost */}
-          <div className="mt-2 flex items-center justify-between border-t border-gray-700 pt-2">
-            <span className="text-xs font-semibold text-gray-300">
-              Estimated Total
-            </span>
-            <span className="text-sm font-bold text-green-400">
-              {formatCost(usage.totalCost)}
-            </span>
-          </div>
         </div>
       )}
     </div>

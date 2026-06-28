@@ -25,6 +25,7 @@ import { Button } from "../ui";
 import { useFontSize } from "../ui/font";
 import ContextStatus from "./ContextStatus";
 import HoverItem from "./InputToolbar/HoverItem";
+import { TokenUsageBadge } from "../chat/TokenUsageBadge";
 
 export interface ToolbarOptions {
   hideUseCodebase?: boolean;
@@ -175,6 +176,7 @@ function InputToolbar(props: InputToolbarProps) {
           }}
         >
           {!isInEdit && <ContextStatus />}
+          <TokenUsageBadge />
           {!props.toolbarOptions?.hideUseCodebase && !isInEdit && (
             <div className="hidden transition-colors duration-200 hover:underline md:flex">
               <HoverItem
