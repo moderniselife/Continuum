@@ -3,13 +3,14 @@
  *
  * Displays tool name, status, arguments, and output in a Liquid Glass
  * styled card. Pending tool calls show approve/reject action buttons.
- * The card auto-expands for pending/running states and collapses when
- * completed.
+ * Completed file-edit tool calls show an inline DiffViewer for
+ * accept/reject confirmation. The card auto-expands for pending/running
+ * states and collapses when completed.
  *
  * @module components/chat/ToolCallCard
  */
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import {
   Terminal,
   FileEdit,
@@ -23,8 +24,26 @@ import {
   XCircle,
   Loader2,
   Circle,
+  FilePlus2,
 } from "lucide-react";
 import type { ToolCallState } from "@/api/types";
+import { readFile } from "@/api/files";
+import DiffViewer from "@/components/editor/DiffViewer";
+import { useFileApply } from "@/hooks/useFileApply";
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** Tool names that represent file write/edit operations. */
+const FILE_EDIT_TOOLS = new Set([
+  "edit_file",
+  "writefile",
+  "write_file",
+  "editfile",
+  "createnewfile",
+  "create_new_file",
+]);
 
 // ---------------------------------------------------------------------------
 // Props
@@ -50,7 +69,7 @@ function getToolIcon(toolName: string) {
   if (["run_command", "subprocess", "runterminalcommand"].includes(name)) {
     return Terminal;
   }
-  if (["edit_file", "writefile", "write_file", "editfile"].includes(name)) {
+  if (FILE_EDIT_TOOLS.has(name)) {
     return FileEdit;
   }
   if (["readfile", "read_file"].includes(name)) {
@@ -67,6 +86,63 @@ function getToolIcon(toolName: string) {
   }
 
   return Wrench;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Truncates a string to `maxLen` characters, appending an ellipsis if needed. */
+function truncate(text: string, maxLen: number): string {
+  return text.length > maxLen ? `${text.slice(0, maxLen)}…` : text;
+}
+
+/** Checks whether a tool call represents a file edit operation. */
+function isFileEditTool(toolName: string): boolean {
+  return FILE_EDIT_TOOLS.has(toolName.toLowerCase());
+}
+
+/**
+ * Extracts the file path and new content from a tool call's arguments.
+ * Handles various arg shapes from different tool implementations.
+ */
+function extractFileEditArgs(
+  argsJson: string,
+): { filePath: string; content: string } | null {
+  try {
+    const parsed = JSON.parse(argsJson);
+    if (typeof parsed !== "object" || parsed === null) return null;
+
+    // Common arg patterns for file path
+    const filePath =
+      parsed.path ??
+      parsed.filePath ??
+      parsed.file_path ??
+      parsed.filename ??
+      parsed.file ??
+      parsed.TargetFile ??
+      parsed.targetFile ??
+      null;
+
+    // Common arg patterns for file content
+    const content =
+      parsed.contents ??
+      parsed.content ??
+      parsed.new_content ??
+      parsed.newContent ??
+      parsed.text ??
+      parsed.CodeContent ??
+      parsed.codeContent ??
+      null;
+
+    if (typeof filePath === "string" && typeof content === "string") {
+      return { filePath, content };
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -117,9 +193,33 @@ function StatusBadge({
   }
 }
 
-/** Truncates a string to `maxLen` characters, appending an ellipsis if needed. */
-function truncate(text: string, maxLen: number): string {
-  return text.length > maxLen ? `${text.slice(0, maxLen)}…` : text;
+// ---------------------------------------------------------------------------
+// Diff status badge — shown instead of "Completed" when diff is active
+// ---------------------------------------------------------------------------
+
+function DiffStatusBadge({ accepted }: { accepted: boolean | null }) {
+  if (accepted === true) {
+    return (
+      <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-400">
+        <CheckCircle2 size={12} />
+        Changes applied
+      </span>
+    );
+  }
+  if (accepted === false) {
+    return (
+      <span className="flex items-center gap-1.5 text-xs font-medium text-red-400">
+        <XCircle size={12} />
+        Changes rejected
+      </span>
+    );
+  }
+  return (
+    <span className="flex items-center gap-1.5 text-xs font-medium text-amber-400">
+      <FileEdit size={12} className="animate-pulse" />
+      Review changes
+    </span>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -161,6 +261,103 @@ function ParsedArgs({ argsJson }: { argsJson: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// Inline diff section — fetches original content and renders DiffViewer
+// ---------------------------------------------------------------------------
+
+function InlineDiffSection({
+  toolCall,
+  fileEditArgs,
+}: {
+  toolCall: ToolCallState;
+  fileEditArgs: { filePath: string; content: string };
+}) {
+  const [originalContent, setOriginalContent] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const { diffState, applyToFile, accept, reject, isApplying, error } =
+    useFileApply();
+
+  // null = pending review, true = accepted, false = rejected
+  const [decision, setDecision] = useState<boolean | null>(null);
+
+  // Fetch original file content on mount
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchOriginal = async () => {
+      setIsLoading(true);
+      try {
+        const result = await readFile(fileEditArgs.filePath);
+        if (!cancelled) {
+          setOriginalContent(result.content);
+        }
+      } catch {
+        // File may not exist yet (new file creation)
+        if (!cancelled) {
+          setOriginalContent("");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    fetchOriginal();
+    return () => {
+      cancelled = true;
+    };
+  }, [fileEditArgs.filePath]);
+
+  const handleAccept = useCallback(async () => {
+    await applyToFile(fileEditArgs.filePath, fileEditArgs.content);
+  }, [applyToFile, fileEditArgs]);
+
+  // Watch for diffState to appear (means applyToFile completed) and auto-accept
+  useEffect(() => {
+    if (diffState) {
+      accept().then(() => {
+        setDecision(true);
+      });
+    }
+  }, [diffState, accept]);
+
+  const handleReject = useCallback(() => {
+    setDecision(false);
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center gap-2 py-4">
+        <Loader2 size={14} className="animate-spin text-blue-400" />
+        <span className="text-text-tertiary text-xs">Loading diff…</span>
+      </div>
+    );
+  }
+
+  if (decision !== null) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg bg-white/5 px-3 py-2">
+        <DiffStatusBadge accepted={decision} />
+      </div>
+    );
+  }
+
+  return (
+    <DiffViewer
+      originalContent={originalContent ?? ""}
+      modifiedContent={fileEditArgs.content}
+      filePath={fileEditArgs.filePath}
+      onAccept={handleAccept}
+      onReject={handleReject}
+      isApplying={isApplying}
+      error={error ?? loadError}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -172,9 +369,31 @@ const ToolCallCard = ({ toolCall, onApprove, onReject }: ToolCallCardProps) => {
 
   const ToolIcon = getToolIcon(toolCall.toolName);
 
+  // Check if this is a file-edit tool with extractable args
+  const fileEditArgs = useMemo(() => {
+    if (
+      isFileEditTool(toolCall.toolName) &&
+      toolCall.status === "completed" &&
+      toolCall.args
+    ) {
+      return extractFileEditArgs(toolCall.args);
+    }
+    return null;
+  }, [toolCall.toolName, toolCall.status, toolCall.args]);
+
+  // Auto-expand completed file-edit tools so users see the diff
+  const shouldShowDiff = fileEditArgs !== null;
+
   const handleToggle = useCallback(() => {
     setExpanded((prev) => !prev);
   }, []);
+
+  // Auto-expand when the tool completes and has a diff to show
+  useEffect(() => {
+    if (shouldShowDiff && toolCall.status === "completed") {
+      setExpanded(true);
+    }
+  }, [shouldShowDiff, toolCall.status]);
 
   return (
     <div className="glass-subtle border-border-glass animate-fade-in overflow-hidden rounded-xl border">
@@ -209,12 +428,20 @@ const ToolCallCard = ({ toolCall, onApprove, onReject }: ToolCallCardProps) => {
       {/* Collapsible body */}
       <div
         className={`transition-all duration-200 ease-in-out ${
-          expanded ? "max-h-[600px] opacity-100" : "max-h-0 opacity-0"
+          expanded ? "max-h-[800px] opacity-100" : "max-h-0 opacity-0"
         } overflow-hidden`}
       >
         <div className="border-border-glass space-y-3 border-t px-3 py-2.5">
-          {/* Arguments section */}
-          {toolCall.args && (
+          {/* Inline diff for file-edit tools */}
+          {shouldShowDiff && (
+            <InlineDiffSection
+              toolCall={toolCall}
+              fileEditArgs={fileEditArgs}
+            />
+          )}
+
+          {/* Arguments section — hidden for file-edit tools with diff */}
+          {toolCall.args && !shouldShowDiff && (
             <div>
               <h4 className="text-text-tertiary mb-1.5 text-[10px] font-semibold uppercase tracking-wider">
                 Arguments
@@ -225,19 +452,21 @@ const ToolCallCard = ({ toolCall, onApprove, onReject }: ToolCallCardProps) => {
             </div>
           )}
 
-          {/* Output section (only when completed) */}
-          {toolCall.status === "completed" && toolCall.output && (
-            <div>
-              <h4 className="text-text-tertiary mb-1.5 text-[10px] font-semibold uppercase tracking-wider">
-                Output
-              </h4>
-              <div className="bg-bg-elevated max-h-[200px] overflow-auto rounded-lg p-2.5">
-                <pre className="text-text-secondary whitespace-pre-wrap font-mono text-xs leading-relaxed">
-                  {toolCall.output}
-                </pre>
+          {/* Output section (only when completed and no diff is shown) */}
+          {toolCall.status === "completed" &&
+            toolCall.output &&
+            !shouldShowDiff && (
+              <div>
+                <h4 className="text-text-tertiary mb-1.5 text-[10px] font-semibold uppercase tracking-wider">
+                  Output
+                </h4>
+                <div className="bg-bg-elevated max-h-[200px] overflow-auto rounded-lg p-2.5">
+                  <pre className="text-text-secondary whitespace-pre-wrap font-mono text-xs leading-relaxed">
+                    {toolCall.output}
+                  </pre>
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
           {/* Error details (only when status is error) */}
           {toolCall.status === "error" && toolCall.error && (
