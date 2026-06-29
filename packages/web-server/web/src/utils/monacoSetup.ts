@@ -390,88 +390,72 @@ function getImportSpecifierAtPosition(
   return null;
 }
 
-/** Disposable handle — stored so we don't register multiple providers. */
-let definitionProviderDisposable: import("monaco-editor").IDisposable | null =
-  null;
+/** Disposable handle — stored so we don't register multiple openers. */
+let editorOpenerDisposable: import("monaco-editor").IDisposable | null = null;
 
 /**
- * Registers a Monaco DefinitionProvider for TypeScript/JavaScript that
- * resolves import specifiers on Cmd+Click / Ctrl+Click.
+ * Registers a Monaco EditorOpener that intercepts "Go to Definition" and
+ * similar cross-file navigation requests.
  *
- * When the user clicks an import path, we:
- *  1. Extract the import specifier under the cursor
- *  2. Resolve it to an absolute file path via the resolve-imports API
- *  3. Open the resolved file in the editor (via openFileFn callback)
- *  4. Return a definition location so Monaco jumps to line 1 of the target
+ * In standalone Monaco (not full VS Code), the editor doesn't know how to
+ * open a different file when a definition is in another URI. The built-in
+ * TypeScript language service already resolves definitions correctly (which
+ * is why "Show References" works), but Cmd+Click fails silently because
+ * there's no opener registered.
+ *
+ * This function registers an opener that:
+ *  1. Extracts the file path from the target URI
+ *  2. Opens the file in our editor via fileStore.openFile()
+ *  3. Scrolls to the target line once the model is loaded
  */
-export function registerDefinitionProvider(
+export function registerEditorOpener(
   monaco: Monaco,
   openFileFn: (filePath: string) => Promise<void>,
 ): void {
   // Only register once
-  if (definitionProviderDisposable) return;
+  if (editorOpenerDisposable) return;
 
-  const languages = [
-    "typescript",
-    "typescriptreact",
-    "javascript",
-    "javascriptreact",
-  ];
+  editorOpenerDisposable = monaco.editor.registerEditorOpener({
+    openCodeEditor(source, resource, selectionOrPosition) {
+      // Extract the file path from the URI
+      const targetPath = resource.path;
 
-  // We need to use a single registration for all languages
-  definitionProviderDisposable = monaco.languages.registerDefinitionProvider(
-    languages.map((l) => ({ language: l })),
-    {
-      provideDefinition: async (model, position) => {
-        const specifier = getImportSpecifierAtPosition(model, position);
-        if (!specifier) return null;
+      if (!targetPath || targetPath === source.getModel()?.uri.path) {
+        // Same file — let Monaco handle it internally
+        return false;
+      }
 
-        // Skip node built-ins
-        if (specifier.startsWith("node:")) return null;
+      // Open the file in our editor tabs
+      void openFileFn(targetPath).then(() => {
+        // After the file opens, try to scroll to the target line
+        if (selectionOrPosition) {
+          // Give Monaco a tick to switch models
+          requestAnimationFrame(() => {
+            const editors = monaco.editor.getEditors();
+            const activeEditor =
+              editors.find((e) => e.getModel()?.uri.path === targetPath) ??
+              editors[0];
 
-        // Get the source file path from the model URI
-        const sourceUri = model.uri.toString();
-        // Strip file:// prefix to get the actual path
-        const sourcePath = sourceUri.startsWith("file://")
-          ? sourceUri.slice(7)
-          : sourceUri;
-
-        try {
-          // Use the resolve-imports API
-          const { resolveImports: resolveImportsFn } = await import(
-            "@/api/files"
-          );
-          const result = await resolveImportsFn(sourcePath, [specifier]);
-
-          if (result.resolved && result.resolved.length > 0) {
-            const resolved = result.resolved[0];
-            const targetPath = resolved.path;
-
-            // Open the file in the editor
-            void openFileFn(targetPath);
-
-            // Create a model URI for the target
-            const targetUri = monaco.Uri.parse(`file://${targetPath}`);
-
-            // Return a definition location (line 1, column 1 of target file)
-            return {
-              uri: targetUri,
-              range: new monaco.Range(1, 1, 1, 1),
-            };
-          }
-        } catch (err) {
-          console.warn(
-            `[monacoSetup] Failed to resolve definition for "${specifier}":`,
-            err,
-          );
+            if (activeEditor && selectionOrPosition) {
+              const sel = selectionOrPosition as import("monaco-editor").IRange;
+              const line = sel.startLineNumber ?? 1;
+              activeEditor.revealLineInCenter(line);
+              activeEditor.setPosition({
+                lineNumber: line,
+                column: sel.startColumn ?? 1,
+              });
+              activeEditor.focus();
+            }
+          });
         }
+      });
 
-        return null;
-      },
+      // Return true = we handled the open request
+      return true;
     },
-  );
+  });
 
   console.info(
-    "[monacoSetup] DefinitionProvider registered for Cmd+Click navigation",
+    "[monacoSetup] EditorOpener registered for Cmd+Click / Go to Definition navigation",
   );
 }

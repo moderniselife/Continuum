@@ -26,7 +26,7 @@ import {
   isRelativeImport,
   getPackageName,
   registerTypeDeclarations,
-  registerDefinitionProvider,
+  registerEditorOpener,
 } from "@/utils/monacoSetup";
 import { resolveTypes, resolveImports } from "@/api/files";
 
@@ -70,9 +70,9 @@ export function EditorPanel() {
     editorRef.current = editor;
     monacoRef.current = monaco;
 
-    // Register Cmd+Click / Ctrl+Click go-to-definition on import paths
+    // Register Cmd+Click / Ctrl+Click go-to-definition file opener
     const { openFile } = useFileStore.getState();
-    registerDefinitionProvider(monaco, openFile);
+    registerEditorOpener(monaco, openFile);
   }, []);
 
   // Whenever the active file changes, set the correct model and load types
