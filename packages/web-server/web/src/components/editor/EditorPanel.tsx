@@ -91,7 +91,15 @@ export function EditorPanel() {
 
     // Only switch model if it's different from current
     if (editor.getModel() !== model) {
-      editor.setModel(model);
+      try {
+        editor.setModel(model);
+      } catch (err) {
+        // Editor may have been disposed during HMR — clear the ref
+        // so subsequent effects skip gracefully.
+        console.warn("[EditorPanel] Editor disposed, clearing ref:", err);
+        editorRef.current = null;
+        return;
+      }
     }
 
     // Also register all other open files as extra libs for cross-file refs
