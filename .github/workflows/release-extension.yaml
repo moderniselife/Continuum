@@ -205,12 +205,16 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.version.outputs.tag }}
-          name: "Continuum ${{ needs.version.outputs.version }}"
+          name: "⚡ Continuum ${{ needs.version.outputs.version }}"
           files: vsix-artifacts/*.vsix
           prerelease: ${{ needs.version.outputs.is_prerelease == 'true' }}
           generate_release_notes: true
           body: |
             ## ⚡ Continuum ${{ needs.version.outputs.version }}
+
+            > **Edit this release** to add detailed feature notes for this version.
+
+            ---
 
             ### Installation
 

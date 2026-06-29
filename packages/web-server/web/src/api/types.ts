@@ -69,6 +69,19 @@ export interface ContextItem {
   endLine?: number;
 }
 
+/**
+ * Lightweight item used in context provider sub-menus (e.g. @file picker).
+ * Contains just enough metadata for display and selection.
+ */
+export interface ContextSubmenuItem {
+  /** Unique identifier (e.g. absolute filepath). */
+  id: string;
+  /** Primary display label (e.g. filename). */
+  title: string;
+  /** Secondary description (e.g. relative path). */
+  description: string;
+}
+
 /** Represents the current state of a tool invocation during agentic mode. */
 export interface ToolCallState {
   /** Unique ID for this particular tool call. */

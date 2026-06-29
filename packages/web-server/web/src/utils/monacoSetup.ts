@@ -137,6 +137,40 @@ export async function loadProjectTsconfig(
     const jsxStr = String(opts.jsx ?? "react-jsx").toLowerCase();
     const moduleResStr = String(opts.moduleResolution ?? "node").toLowerCase();
 
+    // Resolve baseUrl to an absolute file:// URI relative to tsconfig dir.
+    // Monaco's TS worker can't resolve relative baseUrl values like "."
+    // because it has no concept of the project's filesystem location.
+    const tsconfigDir = tsconfig.path
+      ? tsconfig.path.replace(/\/[^/]+$/, "")
+      : "";
+    const rawBaseUrl = (opts.baseUrl as string) ?? ".";
+    const rawPaths = (opts.paths as Record<string, string[]>) ?? {};
+
+    // Compute absolute baseUrl: resolve rawBaseUrl against tsconfig dir
+    // e.g. tsconfigDir="/Users/.../apps/web", baseUrl="." → "/Users/.../apps/web"
+    let absoluteBaseUrl: string;
+    if (rawBaseUrl.startsWith("/")) {
+      absoluteBaseUrl = rawBaseUrl;
+    } else {
+      // Resolve relative baseUrl against tsconfig directory
+      absoluteBaseUrl = `${tsconfigDir}/${rawBaseUrl}`.replace(
+        /\/\.(?=\/|$)/g,
+        "",
+      );
+    }
+
+    // Convert paths values to absolute file:// URIs
+    // e.g. "@/*": ["./src/*"] → "@/*": ["file:///Users/.../apps/web/src/*"]
+    const resolvedPaths: Record<string, string[]> = {};
+    for (const [key, values] of Object.entries(rawPaths)) {
+      resolvedPaths[key] = values.map((v) => {
+        if (v.startsWith("/")) return `file://${v}`;
+        // Resolve relative to absoluteBaseUrl
+        const resolved = `${absoluteBaseUrl}/${v}`.replace(/\/\.(?=\/|$)/g, "");
+        return `file://${resolved}`;
+      });
+    }
+
     const compilerOptions = {
       target: targetMap[targetStr] ?? ts.ScriptTarget.ESNext,
       module: moduleMap[moduleStr] ?? ts.ModuleKind.ESNext,
@@ -153,8 +187,8 @@ export async function loadProjectTsconfig(
       resolveJsonModule: (opts.resolveJsonModule as boolean) ?? true,
       skipLibCheck: true,
       forceConsistentCasingInFileNames: true,
-      baseUrl: (opts.baseUrl as string) ?? ".",
-      paths: (opts.paths as Record<string, string[]>) ?? {},
+      baseUrl: `file://${absoluteBaseUrl}`,
+      paths: resolvedPaths,
     };
 
     tsDefaults.setCompilerOptions(compilerOptions);
@@ -318,4 +352,110 @@ export function getPackageName(specifier: string): string {
   }
   // Regular package: take first segment
   return specifier.split("/")[0];
+}
+
+/**
+ * Extracts the import specifier string at a given position in the model.
+ * Looks for import/require statements and extracts the module path string.
+ */
+function getImportSpecifierAtPosition(
+  model: import("monaco-editor").editor.ITextModel,
+  position: import("monaco-editor").Position,
+): string | null {
+  const line = model.getLineContent(position.lineNumber);
+
+  // Match: import ... from "specifier" or import "specifier"
+  // Also: require("specifier"), import("specifier")
+  const patterns = [
+    /from\s+['"]([^'"]+)['"]/,
+    /import\s*\(\s*['"]([^'"]+)['"]\s*\)/,
+    /require\s*\(\s*['"]([^'"]+)['"]\s*\)/,
+    /import\s+['"]([^'"]+)['"]/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = line.match(pattern);
+    if (match) {
+      const specifier = match[1];
+      // Check if the cursor is within or near the specifier string
+      const specStart = line.indexOf(specifier);
+      const specEnd = specStart + specifier.length;
+      // Allow some slack — anywhere on the import line counts
+      if (position.column >= 1) {
+        return specifier;
+      }
+    }
+  }
+
+  return null;
+}
+
+/** Disposable handle — stored so we don't register multiple openers. */
+let editorOpenerDisposable: import("monaco-editor").IDisposable | null = null;
+
+/**
+ * Registers a Monaco EditorOpener that intercepts "Go to Definition" and
+ * similar cross-file navigation requests.
+ *
+ * In standalone Monaco (not full VS Code), the editor doesn't know how to
+ * open a different file when a definition is in another URI. The built-in
+ * TypeScript language service already resolves definitions correctly (which
+ * is why "Show References" works), but Cmd+Click fails silently because
+ * there's no opener registered.
+ *
+ * This function registers an opener that:
+ *  1. Extracts the file path from the target URI
+ *  2. Opens the file in our editor via fileStore.openFile()
+ *  3. Scrolls to the target line once the model is loaded
+ */
+export function registerEditorOpener(
+  monaco: Monaco,
+  openFileFn: (filePath: string) => Promise<void>,
+): void {
+  // Only register once
+  if (editorOpenerDisposable) return;
+
+  editorOpenerDisposable = monaco.editor.registerEditorOpener({
+    openCodeEditor(source, resource, selectionOrPosition) {
+      // Extract the file path from the URI
+      const targetPath = resource.path;
+
+      if (!targetPath || targetPath === source.getModel()?.uri.path) {
+        // Same file — let Monaco handle it internally
+        return false;
+      }
+
+      // Open the file in our editor tabs
+      void openFileFn(targetPath).then(() => {
+        // After the file opens, try to scroll to the target line
+        if (selectionOrPosition) {
+          // Give Monaco a tick to switch models
+          requestAnimationFrame(() => {
+            const editors = monaco.editor.getEditors();
+            const activeEditor =
+              editors.find((e) => e.getModel()?.uri.path === targetPath) ??
+              editors[0];
+
+            if (activeEditor && selectionOrPosition) {
+              const sel = selectionOrPosition as import("monaco-editor").IRange;
+              const line = sel.startLineNumber ?? 1;
+              activeEditor.revealLineInCenter(line);
+              activeEditor.setPosition({
+                lineNumber: line,
+                column: sel.startColumn ?? 1,
+              });
+              activeEditor.focus();
+            }
+          });
+        }
+      });
+
+      // Return true = we handled the open request
+      return true;
+    },
+  });
+
+  console.info(
+    "[monacoSetup] EditorOpener registered for Cmd+Click / Go to Definition navigation",
+  );
 }

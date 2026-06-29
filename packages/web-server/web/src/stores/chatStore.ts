@@ -58,6 +58,10 @@ export interface ChatState {
   /** Abort an in-flight streaming response for a tab. */
   abortStreaming: (tabId?: string) => void;
 
+  // -- Tool approval --------------------------------------------------------
+  /** Send tool call approval or rejection to the server. */
+  approveToolCall: (toolCallId: string, approved: boolean) => void;
+
   // -- Mode & settings ------------------------------------------------------
   /** Change the chat mode for a given tab. */
   setMode: (tabId: string, mode: ChatMode) => void;
@@ -252,11 +256,33 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
         const data = chunk as {
           content?: string;
+          role?: string;
           toolCalls?: ToolCallState[];
+          toolCall?: ToolCallState;
           sessionId?: string;
           title?: string;
           done?: boolean;
+          thinking?: boolean;
         };
+
+        // Thinking indicator — the agent loop is re-invoking the LLM
+        // after tool execution. Push a new empty assistant message so
+        // the StreamingDots indicator appears.
+        if (data.thinking) {
+          set((state) => ({
+            tabs: updateTab(state.tabs, tabId, (t) => ({
+              messages: [
+                ...t.messages,
+                {
+                  role: "assistant" as const,
+                  content: "",
+                  createdAt: new Date().toISOString(),
+                },
+              ],
+            })),
+          }));
+          return;
+        }
 
         set((state) => ({
           tabs: updateTab(state.tabs, tabId, (t) => {
@@ -272,7 +298,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
               updates.messages = [...t.messages.slice(0, -1), updatedMsg];
             }
 
-            // Update tool call state.
+            // Update tool call state (full array replacement).
             if (data.toolCalls) {
               const lastMsg = (updates.messages ?? t.messages)[
                 (updates.messages ?? t.messages).length - 1
@@ -280,6 +306,30 @@ export const useChatStore = create<ChatState>((set, get) => ({
               const updatedMsg: ChatMessage = {
                 ...lastMsg,
                 toolCalls: data.toolCalls,
+              };
+              updates.messages = [
+                ...(updates.messages ?? t.messages).slice(0, -1),
+                updatedMsg,
+              ];
+            }
+
+            // Handle single tool call update from server-side agent loop.
+            if (data.toolCall) {
+              const lastMsg = (updates.messages ?? t.messages)[
+                (updates.messages ?? t.messages).length - 1
+              ];
+              const existingCalls = [...(lastMsg.toolCalls ?? [])];
+              const idx = existingCalls.findIndex(
+                (tc) => tc.id === data.toolCall!.id,
+              );
+              if (idx >= 0) {
+                existingCalls[idx] = data.toolCall;
+              } else {
+                existingCalls.push(data.toolCall);
+              }
+              const updatedMsg: ChatMessage = {
+                ...lastMsg,
+                toolCalls: existingCalls,
               };
               updates.messages = [
                 ...(updates.messages ?? t.messages).slice(0, -1),
@@ -376,6 +426,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
         yoloMode: !tab.yoloMode,
       })),
     }));
+  },
+
+  // -----------------------------------------------------------------------
+  // Tool approval
+  // -----------------------------------------------------------------------
+
+  approveToolCall: (toolCallId: string, approved: boolean) => {
+    ws.send("tool/approve", { toolCallId, approved });
   },
 
   // -----------------------------------------------------------------------

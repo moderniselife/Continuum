@@ -372,7 +372,7 @@ function AboutTab() {
         <h3 className="text-text-primary text-lg font-bold">Continuum</h3>
         <p className="text-text-secondary text-sm">Open-source AI code agent</p>
         <span className="bg-bg-elevated text-text-tertiary rounded-full px-3 py-1 font-mono text-xs">
-          v1.3.41
+          v1.3.42
         </span>
       </div>
 

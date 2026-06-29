@@ -26,8 +26,9 @@ import {
   isRelativeImport,
   getPackageName,
   registerTypeDeclarations,
+  registerEditorOpener,
 } from "@/utils/monacoSetup";
-import { resolveTypes } from "@/api/files";
+import { resolveTypes, resolveImports } from "@/api/files";
 
 /** Tracks which packages have already had their types loaded. */
 const loadedPackages = new Set<string>();
@@ -68,6 +69,10 @@ export function EditorPanel() {
   const handleMount: OnMount = useCallback((editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
+
+    // Register Cmd+Click / Ctrl+Click go-to-definition file opener
+    const { openFile } = useFileStore.getState();
+    registerEditorOpener(monaco, openFile);
   }, []);
 
   // Whenever the active file changes, set the correct model and load types
@@ -100,7 +105,10 @@ export function EditorPanel() {
     loadProjectTsconfig(monaco, activeFile.path);
 
     // Auto-load type declarations for imported packages
-    loadTypesForFile(monaco, activeFile.content);
+    loadTypesForFile(monaco, activeFile.content, activeFile.path);
+
+    // Auto-resolve and register relative/alias imports for cross-file IntelliSense
+    loadRelativeImports(monaco, activeFile.path, activeFile.content);
   }, [activeFilePath, activeFile?.path]);
 
   // Empty state — no files open
@@ -186,6 +194,81 @@ export function EditorPanel() {
   );
 }
 
+/* ── Auto-resolve relative/alias imports ─────────────────────── */
+
+/** Tracks which source files have already had their imports resolved. */
+const resolvedImportSources = new Set<string>();
+
+/**
+ * Resolves relative and path-alias imports from a file, fetches their
+ * content from the backend, and registers them as extra libs in Monaco
+ * so that cross-file references and IntelliSense work correctly.
+ *
+ * For path-alias imports (@/, ~/), we register the resolved file content
+ * as a declaration module so Monaco's TS worker can resolve the alias
+ * without needing real filesystem access.
+ */
+async function loadRelativeImports(
+  monaco: Monaco,
+  filePath: string,
+  content: string,
+): Promise<void> {
+  if (resolvedImportSources.has(filePath)) return;
+  resolvedImportSources.add(filePath);
+
+  try {
+    const allImports = extractImports(content);
+    // Include both relative imports and path-alias imports (@/, ~/)
+    const resolvableImports = allImports.filter(
+      (imp) =>
+        imp.startsWith("./") ||
+        imp.startsWith("../") ||
+        imp.startsWith("@/") ||
+        imp.startsWith("~/"),
+    );
+
+    if (resolvableImports.length === 0) return;
+
+    const { resolved } = await resolveImports(filePath, resolvableImports);
+
+    for (const {
+      specifier,
+      path: resolvedPath,
+      content: fileContent,
+    } of resolved) {
+      // Register as a model so Monaco's TS worker can resolve references
+      const lang =
+        resolvedPath.endsWith(".tsx") || resolvedPath.endsWith(".jsx")
+          ? "typescriptreact"
+          : resolvedPath.endsWith(".ts")
+            ? "typescript"
+            : "javascript";
+      getOrCreateModel(monaco, resolvedPath, fileContent, lang);
+
+      // For path-alias imports (@/, ~/), also register as an extraLib
+      // at the absolute file:// URI. This ensures Monaco's TS worker
+      // sees the content when resolving the alias via paths config.
+      // The model registration above handles editor navigation; this
+      // handles the TS language service's type resolution.
+      if (specifier?.startsWith("@/") || specifier?.startsWith("~/")) {
+        const fileUri = `file://${resolvedPath}`;
+        monaco.languages.typescript.typescriptDefaults.addExtraLib(
+          fileContent,
+          fileUri,
+        );
+      }
+    }
+
+    if (resolved.length > 0) {
+      console.info(
+        `[EditorPanel] Auto-registered ${resolved.length} imported files for ${filePath.split("/").pop()}`,
+      );
+    }
+  } catch (err) {
+    console.warn("[EditorPanel] Failed to auto-resolve imports:", err);
+  }
+}
+
 /* ── Auto-load types for imports ─────────────────────────────── */
 
 /**
@@ -195,6 +278,7 @@ export function EditorPanel() {
 async function loadTypesForFile(
   monaco: Monaco,
   content: string,
+  sourcePath?: string,
 ): Promise<void> {
   try {
     const imports = extractImports(content);
@@ -211,7 +295,8 @@ async function loadTypesForFile(
     }
 
     const { results } = await resolveTypes(
-      unloaded.map((pkg) => pkg), // Send package names as import specifiers
+      unloaded.map((pkg) => pkg),
+      sourcePath,
     );
 
     for (const [_pkg, declarations] of Object.entries(results)) {

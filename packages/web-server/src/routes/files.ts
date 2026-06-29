@@ -1039,7 +1039,8 @@ export function createFileRoutes(webIde: WebIDE): Router {
   router.get("/types/package", async (req: Request, res: Response) => {
     try {
       const packageName = req.query.name as string;
-      const baseDir =
+      const sourceFile = req.query.source as string | undefined;
+      const workspaceRoot =
         (req.query.dir as string) || (await getWorkspaceDirs())[0];
 
       if (!packageName) {
@@ -1049,51 +1050,60 @@ export function createFileRoutes(webIde: WebIDE): Router {
 
       const declarations: Array<{ path: string; content: string }> = [];
 
-      // Strategy 1: Check @types/<package>
-      const atTypesDir = path.join(
-        baseDir,
-        "node_modules",
-        "@types",
-        packageName.replace(/^@/, "").replace(/\//, "__"),
+      // Walk up from source file (or workspace root) to find node_modules
+      const nodeModulesDirs = findNodeModulesDirs(
+        sourceFile ? path.dirname(sourceFile) : workspaceRoot,
+        workspaceRoot,
       );
-      if (fs.existsSync(atTypesDir)) {
-        collectDeclarationFiles(atTypesDir, declarations, 5);
-      }
 
-      // Strategy 2: Check package's own types (package.json "types" or "typings" field)
-      const pkgDir = path.join(baseDir, "node_modules", packageName);
-      const pkgJsonPath = path.join(pkgDir, "package.json");
-      if (fs.existsSync(pkgJsonPath)) {
-        try {
-          const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
-          const typesEntry =
-            pkgJson.types ||
-            pkgJson.typings ||
-            pkgJson.main?.replace(/\.js$/, ".d.ts");
-          if (typesEntry) {
-            const typesPath = path.join(pkgDir, typesEntry);
-            if (fs.existsSync(typesPath)) {
-              declarations.push({
-                path: typesPath,
-                content: fs.readFileSync(typesPath, "utf-8"),
-              });
-            }
-          }
-        } catch {
-          // Ignore malformed package.json
+      for (const nmDir of nodeModulesDirs) {
+        if (declarations.length > 0) break;
+
+        // Strategy 1: Check @types/<package>
+        const atTypesDir = path.join(
+          nmDir,
+          "@types",
+          packageName.replace(/^@/, "").replace(/\//, "__"),
+        );
+        if (fs.existsSync(atTypesDir)) {
+          collectDeclarationFiles(atTypesDir, declarations, 5);
         }
-      }
 
-      // Strategy 3: Look for index.d.ts in the package root
-      const indexDts = path.join(pkgDir, "index.d.ts");
-      if (
-        fs.existsSync(indexDts) &&
-        !declarations.some((d) => d.path === indexDts)
-      ) {
-        declarations.push({
-          path: indexDts,
-          content: fs.readFileSync(indexDts, "utf-8"),
-        });
+        // Strategy 2: Check package's own types (package.json "types" or "typings" field)
+        const pkgDir = path.join(nmDir, packageName);
+        const pkgJsonPath = path.join(pkgDir, "package.json");
+        if (fs.existsSync(pkgJsonPath)) {
+          try {
+            const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
+            const typesEntry =
+              pkgJson.types ||
+              pkgJson.typings ||
+              pkgJson.main?.replace(/\.js$/, ".d.ts");
+            if (typesEntry) {
+              const typesPath = path.join(pkgDir, typesEntry);
+              if (fs.existsSync(typesPath)) {
+                declarations.push({
+                  path: typesPath,
+                  content: fs.readFileSync(typesPath, "utf-8"),
+                });
+              }
+            }
+          } catch {
+            // Ignore malformed package.json
+          }
+        }
+
+        // Strategy 3: Look for index.d.ts in the package root
+        const indexDts = path.join(pkgDir, "index.d.ts");
+        if (
+          fs.existsSync(indexDts) &&
+          !declarations.some((d) => d.path === indexDts)
+        ) {
+          declarations.push({
+            path: indexDts,
+            content: fs.readFileSync(indexDts, "utf-8"),
+          });
+        }
       }
 
       res.json({
@@ -1118,15 +1128,23 @@ export function createFileRoutes(webIde: WebIDE): Router {
    */
   router.post("/types/resolve", async (req: Request, res: Response) => {
     try {
-      const { imports, dir } = req.body as {
+      const { imports, dir, sourcePath } = req.body as {
         imports: string[];
         dir?: string;
+        sourcePath?: string;
       };
-      const baseDir = dir || (await getWorkspaceDirs())[0];
+      const workspaceRoot = dir || (await getWorkspaceDirs())[0];
       const results: Record<
         string,
         Array<{ path: string; content: string }>
       > = {};
+
+      // Build the list of node_modules directories to search,
+      // walking upward from the source file (Node.js resolution).
+      const nodeModulesDirs = findNodeModulesDirs(
+        sourcePath ? path.dirname(sourcePath) : workspaceRoot,
+        workspaceRoot,
+      );
 
       for (const specifier of imports ?? []) {
         // Skip relative imports — those are handled by model registration
@@ -1147,28 +1165,58 @@ export function createFileRoutes(webIde: WebIDE): Router {
 
         const declarations: Array<{ path: string; content: string }> = [];
 
-        // Check @types
-        const atTypesDir = path.join(
-          baseDir,
-          "node_modules",
-          "@types",
-          pkgName.replace(/^@/, "").replace(/\//, "__"),
-        );
-        if (fs.existsSync(atTypesDir)) {
-          collectDeclarationFiles(atTypesDir, declarations, 3);
-        }
+        // Search each node_modules directory (nearest first)
+        for (const nmDir of nodeModulesDirs) {
+          if (declarations.length > 0) break; // Found it, stop looking
 
-        // Check package's own types
-        const pkgDir = path.join(baseDir, "node_modules", pkgName);
-        const indexDts = path.join(pkgDir, "index.d.ts");
-        if (
-          fs.existsSync(indexDts) &&
-          !declarations.some((d) => d.path === indexDts)
-        ) {
-          declarations.push({
-            path: indexDts,
-            content: fs.readFileSync(indexDts, "utf-8"),
-          });
+          // Check @types/<package>
+          const atTypesDir = path.join(
+            nmDir,
+            "@types",
+            pkgName.replace(/^@/, "").replace(/\//, "__"),
+          );
+          if (fs.existsSync(atTypesDir)) {
+            collectDeclarationFiles(atTypesDir, declarations, 3);
+          }
+
+          // Check package's own types (package.json "types"/"typings" field)
+          const pkgDir = path.join(nmDir, pkgName);
+          const pkgJsonPath = path.join(pkgDir, "package.json");
+          if (fs.existsSync(pkgJsonPath)) {
+            try {
+              const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
+              const typesEntry =
+                pkgJson.types ||
+                pkgJson.typings ||
+                pkgJson.main?.replace(/\.js$/, ".d.ts");
+              if (typesEntry) {
+                const typesPath = path.join(pkgDir, typesEntry);
+                if (
+                  fs.existsSync(typesPath) &&
+                  !declarations.some((d) => d.path === typesPath)
+                ) {
+                  declarations.push({
+                    path: typesPath,
+                    content: fs.readFileSync(typesPath, "utf-8"),
+                  });
+                }
+              }
+            } catch {
+              // Ignore malformed package.json
+            }
+          }
+
+          // Check index.d.ts in the package root
+          const indexDts = path.join(pkgDir, "index.d.ts");
+          if (
+            fs.existsSync(indexDts) &&
+            !declarations.some((d) => d.path === indexDts)
+          ) {
+            declarations.push({
+              path: indexDts,
+              content: fs.readFileSync(indexDts, "utf-8"),
+            });
+          }
         }
 
         if (declarations.length > 0) {
@@ -1180,6 +1228,338 @@ export function createFileRoutes(webIde: WebIDE): Router {
     } catch (error) {
       res.status(500).json({
         error: "Failed to resolve type declarations",
+        details: (error as Error).message,
+      });
+    }
+  });
+
+  /**
+   * POST /files/resolve-imports
+   *
+   * Given a source file path and a list of import specifiers, resolves each
+   * to an absolute file path and returns the file content. Handles relative
+   * imports (./  ../), path alias imports (@/  ~/), and tries common
+   * extensions (.ts, .tsx, .js, .jsx, /index.ts, /index.tsx).
+   *
+   * Body: { sourcePath: string, imports: string[] }
+   * Response: { resolved: Array<{ specifier: string, path: string, content: string }> }
+   */
+  router.post("/files/resolve-imports", async (req: Request, res: Response) => {
+    try {
+      const { sourcePath, imports } = req.body as {
+        sourcePath: string;
+        imports: string[];
+      };
+
+      if (!sourcePath || !imports?.length) {
+        return res.json({ resolved: [] });
+      }
+
+      const workspaceDirs = await getWorkspaceDirs();
+      const baseDir = workspaceDirs[0] || "";
+
+      // Try to load tsconfig to resolve path aliases
+      let pathAliases: Record<string, string[]> = {};
+      let tsconfigBaseUrl = ".";
+      try {
+        const tsconfigPath = findTsconfigFor(sourcePath, baseDir);
+        if (tsconfigPath) {
+          const raw = fs.readFileSync(tsconfigPath, "utf-8");
+          // Strip JSONC comments (// and /* */) before parsing —
+          // tsconfig files commonly contain comments
+          const stripped = raw
+            .replace(/\/\/.*$/gm, "")
+            .replace(/\/\*[\s\S]*?\*\//g, "");
+          const tsconfig = JSON.parse(stripped);
+          const tsconfigDir = path.dirname(tsconfigPath);
+          tsconfigBaseUrl = tsconfig.compilerOptions?.baseUrl || ".";
+          pathAliases = tsconfig.compilerOptions?.paths || {};
+          // Resolve baseUrl relative to tsconfig location
+          tsconfigBaseUrl = path.resolve(tsconfigDir, tsconfigBaseUrl);
+        }
+      } catch {
+        // Ignore tsconfig parse errors
+      }
+
+      const sourceDir = path.dirname(sourcePath);
+      const resolved: Array<{
+        specifier: string;
+        path: string;
+        content: string;
+      }> = [];
+
+      const EXTENSIONS = [
+        "",
+        ".ts",
+        ".tsx",
+        ".js",
+        ".jsx",
+        "/index.ts",
+        "/index.tsx",
+        "/index.js",
+        "/index.jsx",
+      ];
+
+      for (const specifier of imports) {
+        let resolvedPath: string | null = null;
+
+        if (specifier.startsWith("./") || specifier.startsWith("../")) {
+          // Relative import — resolve against source directory
+          const base = path.resolve(sourceDir, specifier);
+          resolvedPath = tryResolveWithExtensions(base, EXTENSIONS);
+        } else {
+          // Try path aliases
+          for (const [aliasPattern, aliasPaths] of Object.entries(
+            pathAliases,
+          )) {
+            const aliasPrefix = aliasPattern.replace(/\*$/, "");
+            if (specifier.startsWith(aliasPrefix)) {
+              const remainder = specifier.slice(aliasPrefix.length);
+              for (const ap of aliasPaths) {
+                const aliasBase = ap.replace(/\*$/, "");
+                const candidate = path.resolve(
+                  tsconfigBaseUrl,
+                  aliasBase,
+                  remainder,
+                );
+                resolvedPath = tryResolveWithExtensions(candidate, EXTENSIONS);
+                if (resolvedPath) break;
+              }
+              if (resolvedPath) break;
+            }
+          }
+        }
+
+        if (resolvedPath && fs.existsSync(resolvedPath)) {
+          // Security: ensure it's within the workspace
+          const realPath = fs.realpathSync(resolvedPath);
+          const isInWorkspace = workspaceDirs.some((wd) =>
+            realPath.startsWith(fs.realpathSync(wd)),
+          );
+          if (isInWorkspace) {
+            try {
+              const content = fs.readFileSync(resolvedPath, "utf-8");
+              // Skip very large files (> 100KB)
+              if (content.length <= 100_000) {
+                resolved.push({
+                  specifier,
+                  path: resolvedPath,
+                  content,
+                });
+              }
+            } catch {
+              // Skip unreadable files
+            }
+          }
+        }
+      }
+
+      res.json({ resolved });
+    } catch (error) {
+      res.status(500).json({
+        error: "Failed to resolve imports",
+        details: (error as Error).message,
+      });
+    }
+  });
+
+  // ============================================================
+  // File Listing for @file Context Provider
+  // ============================================================
+
+  /**
+   * Directories to skip when recursively walking the workspace.
+   * These are common non-source directories that would bloat the
+   * file list and are unlikely to be useful context.
+   */
+  const WALK_EXCLUDE_DIRS = new Set([
+    "node_modules",
+    ".git",
+    ".hg",
+    ".svn",
+    "dist",
+    "build",
+    "out",
+    ".next",
+    ".nuxt",
+    ".cache",
+    ".turbo",
+    ".parcel-cache",
+    "__pycache__",
+    ".tox",
+    ".venv",
+    "venv",
+    "coverage",
+    ".nyc_output",
+    ".DS_Store",
+    "vendor",
+  ]);
+
+  /**
+   * Binary file extensions that should be excluded from the context
+   * file picker — they're not useful as LLM context.
+   */
+  const BINARY_EXTENSIONS = new Set([
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".ico",
+    ".bmp",
+    ".webp",
+    ".svg",
+    ".mp3",
+    ".mp4",
+    ".mov",
+    ".avi",
+    ".wmv",
+    ".flv",
+    ".wav",
+    ".ogg",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".eot",
+    ".otf",
+    ".zip",
+    ".tar",
+    ".gz",
+    ".bz2",
+    ".7z",
+    ".rar",
+    ".pdf",
+    ".doc",
+    ".docx",
+    ".xls",
+    ".xlsx",
+    ".ppt",
+    ".pptx",
+    ".exe",
+    ".dll",
+    ".so",
+    ".dylib",
+    ".o",
+    ".a",
+    ".class",
+    ".jar",
+    ".pyc",
+    ".pyo",
+    ".wasm",
+    ".lock",
+  ]);
+
+  /**
+   * Recursively walks a directory, collecting file paths up to a limit.
+   *
+   * @param dir    - Absolute directory path to walk.
+   * @param base   - Workspace root (used for relative paths).
+   * @param files  - Accumulator array for results.
+   * @param limit  - Maximum number of files to collect.
+   * @param depth  - Current recursion depth (capped at 15).
+   */
+  function walkDir(
+    dir: string,
+    base: string,
+    files: Array<{ path: string; relativePath: string; name: string }>,
+    limit: number,
+    depth = 0,
+  ): void {
+    if (depth > 15 || files.length >= limit) return;
+
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return; // Skip unreadable directories
+    }
+
+    // Sort entries so files come first (deterministic ordering)
+    entries.sort((a, b) => {
+      if (a.isDirectory() !== b.isDirectory()) {
+        return a.isDirectory() ? 1 : -1;
+      }
+      return a.name.localeCompare(b.name);
+    });
+
+    for (const entry of entries) {
+      if (files.length >= limit) break;
+
+      // Skip hidden files/dirs (except .github, .vscode, etc.)
+      if (
+        entry.name.startsWith(".") &&
+        !entry.name.startsWith(".github") &&
+        !entry.name.startsWith(".vscode") &&
+        !entry.name.startsWith(".env") &&
+        !entry.name.startsWith(".eslint") &&
+        !entry.name.startsWith(".prettier")
+      ) {
+        // Still skip .env files for security — the isSecurityConcernLocal
+        // check below will catch them, but skip here to avoid even listing
+        if (entry.isDirectory()) continue;
+      }
+
+      const fullPath = path.join(dir, entry.name);
+
+      if (entry.isDirectory()) {
+        if (WALK_EXCLUDE_DIRS.has(entry.name)) continue;
+        walkDir(fullPath, base, files, limit, depth + 1);
+      } else if (entry.isFile()) {
+        const ext = path.extname(entry.name).toLowerCase();
+        if (BINARY_EXTENSIONS.has(ext)) continue;
+        if (isSecurityConcernLocal(fullPath)) continue;
+
+        const relativePath = path.relative(base, fullPath);
+        files.push({
+          path: fullPath,
+          relativePath,
+          name: entry.name,
+        });
+      }
+    }
+  }
+
+  /**
+   * GET /files/list-all
+   * Returns all source files in the workspace, recursively.
+   *
+   * Used by the @file context provider to populate the mention dropdown.
+   * Excludes node_modules, .git, build artefacts, and binary files.
+   *
+   * Query params:
+   *   - limit: Maximum files to return (default 5000, max 10000)
+   */
+  router.get("/files/list-all", async (_req: Request, res: Response) => {
+    try {
+      const limit = Math.min(
+        parseInt((_req.query.limit as string) ?? "5000", 10),
+        10_000,
+      );
+
+      const dirs = await getWorkspaceDirs();
+      if (dirs.length === 0) {
+        res.json({ files: [], total: 0 });
+        return;
+      }
+
+      const allFiles: Array<{
+        path: string;
+        relativePath: string;
+        name: string;
+      }> = [];
+
+      for (const dir of dirs) {
+        walkDir(dir, dir, allFiles, limit);
+        if (allFiles.length >= limit) break;
+      }
+
+      res.json({
+        files: allFiles.slice(0, limit),
+        total: allFiles.length,
+        truncated: allFiles.length >= limit,
+      });
+    } catch (error) {
+      res.status(500).json({
+        error: "Failed to list workspace files",
         details: (error as Error).message,
       });
     }
@@ -1229,4 +1609,71 @@ function collectDeclarationFiles(
   } catch {
     // Skip unreadable directories
   }
+}
+
+/**
+ * Walk up from `filePath` to find the nearest tsconfig.json,
+ * stopping at `rootDir`.
+ */
+function findTsconfigFor(filePath: string, rootDir: string): string | null {
+  let dir = path.dirname(filePath);
+  const root = path.resolve(rootDir);
+
+  while (dir.length >= root.length) {
+    const candidate = path.join(dir, "tsconfig.json");
+    if (fs.existsSync(candidate)) return candidate;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
+
+/**
+ * Try to resolve a base path with common TypeScript/JavaScript extensions.
+ * Returns the first path that exists, or `null`.
+ */
+function tryResolveWithExtensions(
+  basePath: string,
+  extensions: string[],
+): string | null {
+  for (const ext of extensions) {
+    const candidate = basePath + ext;
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+/**
+ * Walks upward from `startDir` to `rootDir`, collecting all `node_modules`
+ * directories found along the way. Also checks for bun's hoisted store
+ * at `node_modules/.bun/node_modules`.
+ *
+ * Returns directories in nearest-first order, matching Node.js resolution.
+ */
+function findNodeModulesDirs(startDir: string, rootDir: string): string[] {
+  const dirs: string[] = [];
+  let dir = path.resolve(startDir);
+  const root = path.resolve(rootDir);
+
+  while (dir.length >= root.length) {
+    const nmDir = path.join(dir, "node_modules");
+    if (fs.existsSync(nmDir)) {
+      dirs.push(nmDir);
+
+      // Also check bun's hoisted module store
+      const bunHoisted = path.join(nmDir, ".bun", "node_modules");
+      if (fs.existsSync(bunHoisted)) {
+        dirs.push(bunHoisted);
+      }
+    }
+
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+
+  return dirs;
 }

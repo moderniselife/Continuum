@@ -9,7 +9,7 @@
  * @remarks Uses the Liquid Glass design language.
  */
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import {
   Code2,
   Bug,
@@ -17,6 +17,9 @@ import {
   GitPullRequest,
   Sparkles,
   Command,
+  ShieldCheck,
+  ShieldX,
+  Clock,
 } from "lucide-react";
 import { useChatStore } from "@/stores/chatStore";
 import ModelSelector from "./ModelSelector";
@@ -55,10 +58,18 @@ const ChatPanel = () => {
   const tabs = useChatStore((s) => s.tabs);
   const activeTabId = useChatStore((s) => s.activeTabId);
   const newChat = useChatStore((s) => s.newChat);
+  const approveToolCall = useChatStore((s) => s.approveToolCall);
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const messages = activeTab?.messages ?? [];
   const isStreaming = activeTab?.isStreaming ?? false;
   const hasMessages = messages.length > 0 || isStreaming;
+
+  // Find all pending tool calls across all messages
+  const pendingToolCalls = useMemo(() => {
+    return messages.flatMap(
+      (msg) => msg.toolCalls?.filter((tc) => tc.status === "pending") ?? [],
+    );
+  }, [messages]);
 
   // Auto-create a tab on first render so mode buttons work immediately
   useEffect(() => {
@@ -66,6 +77,18 @@ const ChatPanel = () => {
       newChat();
     }
   }, []);
+
+  const handleApproveAll = () => {
+    for (const tc of pendingToolCalls) {
+      approveToolCall(tc.id, true);
+    }
+  };
+
+  const handleRejectAll = () => {
+    for (const tc of pendingToolCalls) {
+      approveToolCall(tc.id, false);
+    }
+  };
 
   return (
     <div className="flex h-full w-full flex-col px-3">
@@ -142,6 +165,48 @@ const ChatPanel = () => {
               </kbd>
               <span className="ml-0.5">Send message</span>
             </span>
+          </div>
+        </div>
+      )}
+
+      {/* Sticky approval bar — visible when tool calls are awaiting approval */}
+      {pendingToolCalls.length > 0 && (
+        <div className="animate-fade-in glass border-border-accent mx-1 mb-2 flex items-center justify-between rounded-xl border px-4 py-2.5 shadow-lg">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/20">
+              <Clock size={16} className="text-amber-400" />
+            </div>
+            <div>
+              <span className="text-text-primary text-sm font-medium">
+                {pendingToolCalls.length === 1
+                  ? `${pendingToolCalls[0].toolName} awaiting approval`
+                  : `${pendingToolCalls.length} tool calls awaiting approval`}
+              </span>
+              {pendingToolCalls.length > 1 && (
+                <span className="text-text-tertiary block text-[10px]">
+                  {pendingToolCalls.map((tc) => tc.toolName).join(", ")}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleApproveAll}
+              className="gradient-accent flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-medium text-white shadow-sm transition-all duration-150 hover:shadow-md active:scale-[0.97]"
+            >
+              <ShieldCheck size={14} />
+              {pendingToolCalls.length === 1 ? "Approve" : "Approve All"}
+            </button>
+            <button
+              type="button"
+              onClick={handleRejectAll}
+              className="glass-subtle border-border-glass flex items-center gap-1.5 rounded-lg border px-4 py-1.5 text-xs font-medium text-red-400 transition-all duration-150 hover:bg-red-500/10 active:scale-[0.97]"
+            >
+              <ShieldX size={14} />
+              {pendingToolCalls.length === 1 ? "Reject" : "Reject All"}
+            </button>
           </div>
         </div>
       )}

@@ -207,16 +207,30 @@ export class ContinuumWS {
     return new Promise<void>((resolve, reject) => {
       const messageId = crypto.randomUUID();
 
-      // Streaming requests use a longer timeout — 5 minutes.
-      const timer = setTimeout(
-        () => {
+      // Streaming requests use an activity-based timeout — resets on each chunk.
+      // 30 minutes maximum inactivity (covers tool approval waits).
+      const STREAM_INACTIVITY_MS = 30 * 60 * 1_000;
+      let timer = setTimeout(() => {
+        this.streams.delete(messageId);
+        reject(new Error(`Stream "${type}" timed out`));
+      }, STREAM_INACTIVITY_MS);
+
+      // Wrap onChunk to reset the timer on every chunk
+      const wrappedOnChunk = (chunk: unknown) => {
+        clearTimeout(timer);
+        timer = setTimeout(() => {
           this.streams.delete(messageId);
           reject(new Error(`Stream "${type}" timed out`));
-        },
-        5 * 60 * 1_000,
-      );
+        }, STREAM_INACTIVITY_MS);
+        onChunk(chunk);
+      };
 
-      this.streams.set(messageId, { onChunk, resolve, reject, timer });
+      this.streams.set(messageId, {
+        onChunk: wrappedOnChunk,
+        resolve,
+        reject,
+        timer,
+      });
 
       this.rawSend({ messageId, type, data });
     });
