@@ -225,12 +225,12 @@ async function loadRelativeImports(
       content: fileContent,
     } of resolved) {
       // Register as a model so Monaco's TS worker can resolve references
+      // Standalone Monaco uses "typescript" for both .ts and .tsx,
+      // and "javascript" for both .js and .jsx.
       const lang =
-        resolvedPath.endsWith(".tsx") || resolvedPath.endsWith(".jsx")
-          ? "typescriptreact"
-          : resolvedPath.endsWith(".ts")
-            ? "typescript"
-            : "javascript";
+        resolvedPath.endsWith(".ts") || resolvedPath.endsWith(".tsx")
+          ? "typescript"
+          : "javascript";
       getOrCreateModel(monaco, resolvedPath, fileContent, lang);
 
       // For path-alias imports (@/, ~/), also register as an extraLib

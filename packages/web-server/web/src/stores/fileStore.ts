@@ -90,9 +90,9 @@ export function getLanguage(filename: string): string {
 
   const languageMap: Record<string, string> = {
     ".ts": "typescript",
-    ".tsx": "typescriptreact",
+    ".tsx": "typescript",
     ".js": "javascript",
-    ".jsx": "javascriptreact",
+    ".jsx": "javascript",
     ".mjs": "javascript",
     ".cjs": "javascript",
     ".json": "json",
