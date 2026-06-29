@@ -75,38 +75,18 @@ export function EditorPanel() {
     registerEditorOpener(monaco, openFile);
   }, []);
 
-  // Whenever the active file changes, set the correct model and load types
+  // Whenever the active file changes, register background models and load types.
+  // NOTE: We do NOT call editor.setModel() here — @monaco-editor/react manages
+  // model switching internally via the `path` prop on <Editor>. Calling setModel()
+  // manually fights with the library's lifecycle and causes disposal crashes.
   useEffect(() => {
     const monaco = monacoRef.current;
-    const editor = editorRef.current;
-    if (!monaco || !editor || !activeFile) return;
+    if (!monaco || !activeFile) return;
 
-    // Create or get the model for this file
-    const model = getOrCreateModel(
-      monaco,
-      activeFile.path,
-      activeFile.content,
-      activeFile.language,
-    );
-
-    // Only switch model if it's different from current
-    if (editor.getModel() !== model) {
-      try {
-        editor.setModel(model);
-      } catch (err) {
-        // Editor may have been disposed during HMR — clear the ref
-        // so subsequent effects skip gracefully.
-        console.warn("[EditorPanel] Editor disposed, clearing ref:", err);
-        editorRef.current = null;
-        return;
-      }
-    }
-
-    // Also register all other open files as extra libs for cross-file refs
+    // Register all open files as models so Monaco's TS worker can resolve
+    // cross-file references (IntelliSense, go-to-definition, etc.)
     for (const file of openFiles) {
-      if (file.path !== activeFile.path) {
-        getOrCreateModel(monaco, file.path, file.content, file.language);
-      }
+      getOrCreateModel(monaco, file.path, file.content, file.language);
     }
 
     // Load project tsconfig on first file open (async, non-blocking)
