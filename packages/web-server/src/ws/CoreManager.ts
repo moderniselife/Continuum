@@ -31,6 +31,12 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
   private _onErrorHandlers: ((message: Message, error: Error) => void)[] = [];
   private _configHandler: ConfigHandler | null = null;
 
+  // Map of pending tool approval requests: toolCallId -> resolver
+  private pendingToolApprovals = new Map<
+    string,
+    { resolve: (approved: boolean) => void }
+  >();
+
   constructor(
     private ws: WebSocket,
     private webIde: WebIDE,
@@ -49,6 +55,42 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
         console.error("[WebCoreMessenger] Failed to parse message:", error);
       }
     });
+  }
+
+  /**
+   * Wait for the client to approve or reject a tool call.
+   * Returns true if approved, false if rejected.
+   * Auto-approves after 120 seconds to prevent deadlocks.
+   */
+  private waitForToolApproval(toolCallId: string): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      this.pendingToolApprovals.set(toolCallId, { resolve });
+
+      // Auto-approve after 120s to prevent infinite waits
+      setTimeout(() => {
+        if (this.pendingToolApprovals.has(toolCallId)) {
+          console.warn(
+            `[WebCoreMessenger] Tool approval timeout for ${toolCallId}, auto-approving`,
+          );
+          this.pendingToolApprovals.delete(toolCallId);
+          resolve(true);
+        }
+      }, 120_000);
+    });
+  }
+
+  /**
+   * Handle an incoming tool/approve message from the client.
+   */
+  private handleToolApproval(toolCallId: string, approved: boolean): void {
+    const pending = this.pendingToolApprovals.get(toolCallId);
+    if (pending) {
+      this.pendingToolApprovals.delete(toolCallId);
+      pending.resolve(approved);
+      console.info(
+        `[WebCoreMessenger] Tool ${toolCallId} ${approved ? "approved" : "rejected"} by user`,
+      );
+    }
   }
 
   onError(handler: (message: Message, error: Error) => void): void {
@@ -302,6 +344,18 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
     }
 
     // -----------------------------------------------------------------------
+    // Handle tool approval responses from the client
+    // -----------------------------------------------------------------------
+    if (msg.messageType === "tool/approve") {
+      const { toolCallId, approved } = msg.data as {
+        toolCallId: string;
+        approved: boolean;
+      };
+      this.handleToolApproval(toolCallId, approved);
+      return;
+    }
+
+    // -----------------------------------------------------------------------
     // Server-side agent loop for "chat/send"
     //
     // Translates the Web IDE chat payload → Core "llm/streamChat", then runs
@@ -359,7 +413,7 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
         content: userContent,
       });
 
-      const MAX_ITERATIONS = 10;
+      const MAX_ITERATIONS = 50;
       let iteration = 0;
 
       while (iteration < MAX_ITERATIONS) {
@@ -493,6 +547,7 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
         }
 
         // Execute each tool call and feed results back into history
+        const isYoloMode = msg.data?.allowAutoApply === true;
         for (const tc of accumulatedToolCalls) {
           const toolName = tc.function?.name ?? "unknown";
           const toolCallId = tc.id || randomUUID();
@@ -501,6 +556,78 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
           console.info(
             `[WebCoreMessenger] Tool call: ${toolName} (id: ${toolCallId})`,
           );
+
+          let parsedArgs: Record<string, any> = {};
+          try {
+            parsedArgs = JSON.parse(rawArgs);
+          } catch {
+            // If args can't be parsed, still show the tool call
+          }
+
+          // Non-YOLO mode: send pending status for write tools and wait for approval
+          const writeTools = [
+            "writeFile",
+            "write_file",
+            "createNewFile",
+            "create_new_file",
+            "editFile",
+            "edit_file",
+            "multi_edit",
+            "str_replace_editor",
+            "replace_in_file",
+            "insert_code_block",
+            "runTerminalCommand",
+            "run_terminal_command",
+            "run_command",
+            "subprocess",
+          ];
+          const requiresApproval = !isYoloMode && writeTools.includes(toolName);
+
+          if (requiresApproval) {
+            // Send pending status — frontend shows Approve/Reject buttons
+            this.sendToClient({
+              messageType: "chat/send",
+              messageId: msg.messageId,
+              data: {
+                toolCall: {
+                  id: toolCallId,
+                  toolName,
+                  args: rawArgs,
+                  status: "pending",
+                },
+              },
+              streaming: true,
+              done: false,
+            });
+
+            // Wait for approval from the client
+            const approved = await this.waitForToolApproval(toolCallId);
+            if (!approved) {
+              // Rejected — notify frontend and skip this tool
+              this.sendToClient({
+                messageType: "chat/send",
+                messageId: msg.messageId,
+                data: {
+                  toolCall: {
+                    id: toolCallId,
+                    toolName,
+                    args: rawArgs,
+                    status: "error",
+                    output: "Tool call rejected by user.",
+                  },
+                },
+                streaming: true,
+                done: false,
+              });
+              conversationHistory.push({
+                role: "tool" as const,
+                content:
+                  "Tool call was rejected by the user. Do not retry this exact call.",
+                toolCallId,
+              });
+              continue;
+            }
+          }
 
           // Notify frontend: tool call is running
           this.sendToClient({
@@ -522,7 +649,6 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
           let toolStatus: "completed" | "error" = "completed";
 
           try {
-            const parsedArgs = JSON.parse(rawArgs);
             toolOutput = await this.executeTool(toolName, parsedArgs, tools);
           } catch (err) {
             toolOutput = `Error executing tool '${toolName}': ${(err as Error).message}`;
@@ -557,6 +683,15 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
             toolCallId,
           });
         }
+
+        // Notify frontend that the AI is thinking again before next iteration
+        this.sendToClient({
+          messageType: "chat/send",
+          messageId: msg.messageId,
+          data: { thinking: true },
+          streaming: true,
+          done: false,
+        });
 
         // Loop continues — will re-invoke streamChat with updated history
         console.info(
@@ -688,6 +823,20 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
         return await this.webIde.readFile(filePath);
       }
 
+      case "readFileRange":
+      case "read_file_range": {
+        const filePath = args.filepath ?? args.path ?? args.file;
+        const startLine = args.startLine ?? args.start_line ?? args.start ?? 1;
+        const endLine = args.endLine ?? args.end_line ?? args.end ?? undefined;
+        const content = await this.webIde.readFile(filePath);
+        const lines = content.split("\n");
+        const start = Math.max(1, startLine) - 1;
+        const end = endLine ? Math.min(lines.length, endLine) : lines.length;
+        const slice = lines.slice(start, end);
+        // Return with line numbers for context
+        return slice.map((line, i) => `${start + i + 1}: ${line}`).join("\n");
+      }
+
       case "createNewFile":
       case "create_new_file":
       case "writeFile":
@@ -704,6 +853,100 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
         const contents = args.contents ?? args.content ?? "";
         await this.webIde.writeFile(filePath, contents);
         return "File edited successfully.";
+      }
+
+      case "multi_edit":
+      case "multiEdit": {
+        // Structured multi-edit: apply multiple find/replace edits to a file
+        const filePath = args.filepath ?? args.path ?? args.file;
+        const edits: Array<{
+          old_string?: string;
+          new_string?: string;
+          oldStr?: string;
+          newStr?: string;
+        }> = args.edits ?? args.changes ?? [];
+        if (!filePath) return "Error: no file path specified.";
+
+        let content = await this.webIde.readFile(filePath);
+        let appliedCount = 0;
+
+        for (const edit of edits) {
+          const oldStr = edit.old_string ?? edit.oldStr ?? "";
+          const newStr = edit.new_string ?? edit.newStr ?? "";
+          if (!oldStr) continue;
+          if (content.includes(oldStr)) {
+            content = content.replace(oldStr, newStr);
+            appliedCount++;
+          } else {
+            console.warn(
+              `[multi_edit] Could not find target string in ${filePath}:\n${oldStr.slice(0, 100)}...`,
+            );
+          }
+        }
+
+        await this.webIde.writeFile(filePath, content);
+        return `Applied ${appliedCount}/${edits.length} edits to ${filePath}.`;
+      }
+
+      case "str_replace_editor":
+      case "replace_in_file": {
+        // Single find/replace edit — common in Claude tool use
+        const filePath = args.filepath ?? args.path ?? args.file;
+        const oldStr = args.old_str ?? args.old_string ?? args.search ?? "";
+        const newStr = args.new_str ?? args.new_string ?? args.replace ?? "";
+        const command = args.command ?? "str_replace";
+
+        if (command === "view") {
+          // View mode — just read the file
+          return await this.webIde.readFile(filePath);
+        }
+
+        if (command === "create") {
+          // Create mode — write new file
+          const contents = args.file_text ?? args.content ?? "";
+          await this.webIde.writeFile(filePath, contents);
+          return `File created: ${filePath}`;
+        }
+
+        if (!filePath) return "Error: no file path specified.";
+        let content = await this.webIde.readFile(filePath);
+
+        if (!oldStr) {
+          // If no old_str, treat as a full file replacement
+          await this.webIde.writeFile(filePath, newStr);
+          return "File replaced successfully.";
+        }
+
+        if (!content.includes(oldStr)) {
+          return `Error: Could not find the specified text in ${filePath}. Make sure the old_str matches exactly, including whitespace and indentation.`;
+        }
+
+        content = content.replace(oldStr, newStr);
+        await this.webIde.writeFile(filePath, content);
+        return `Successfully replaced text in ${filePath}.`;
+      }
+
+      case "insert_code_block":
+      case "insertCodeBlock": {
+        const filePath = args.filepath ?? args.path ?? args.file;
+        const code = args.code ?? args.content ?? args.text ?? "";
+        const line = args.line ?? args.lineNumber ?? args.at;
+        if (!filePath) return "Error: no file path specified.";
+
+        let content = await this.webIde.readFile(filePath);
+        const lines = content.split("\n");
+
+        if (line !== undefined) {
+          // Insert at specific line number
+          const insertAt = Math.max(0, Math.min(lines.length, line - 1));
+          lines.splice(insertAt, 0, code);
+        } else {
+          // Append to end
+          lines.push(code);
+        }
+
+        await this.webIde.writeFile(filePath, lines.join("\n"));
+        return `Code inserted into ${filePath}.`;
       }
 
       case "runTerminalCommand":
@@ -732,14 +975,18 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
       case "searchFiles":
       case "search_files":
       case "grep_search":
-      case "grepSearch": {
+      case "grepSearch":
+      case "codebase": {
         const query = args.query ?? args.pattern ?? args.search ?? "";
         const maxResults = args.maxResults ?? 50;
         return await this.webIde.getSearchResults(query, maxResults);
       }
 
       case "glob_search":
-      case "globSearch": {
+      case "globSearch":
+      case "file_glob_search":
+      case "fileGlobSearch":
+      case "find_files": {
         const pattern = args.pattern ?? args.glob ?? "*";
         const maxResults = args.maxResults ?? 100;
         return await this.webIde.getFileResults(pattern, maxResults);
@@ -762,7 +1009,7 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
       }
 
       default:
-        return `Tool '${toolName}' is not yet supported in the Web IDE. Available tools: readFile, writeFile, editFile, runTerminalCommand, listDir, searchFiles, globSearch, getDiff, fileExists.`;
+        return `Tool '${toolName}' is not yet supported in the Web IDE. Available tools: readFile, readFileRange, writeFile, editFile, multi_edit, str_replace_editor, insert_code_block, runTerminalCommand, listDir, searchFiles, codebase, globSearch, file_glob_search, getDiff, fileExists.`;
     }
   }
 

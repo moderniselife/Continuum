@@ -262,7 +262,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
           sessionId?: string;
           title?: string;
           done?: boolean;
+          thinking?: boolean;
         };
+
+        // Thinking indicator — the agent loop is re-invoking the LLM
+        // after tool execution. Push a new empty assistant message so
+        // the StreamingDots indicator appears.
+        if (data.thinking) {
+          set((state) => ({
+            tabs: updateTab(state.tabs, tabId, (t) => ({
+              messages: [
+                ...t.messages,
+                { role: "assistant" as const, content: "" },
+              ],
+            })),
+          }));
+          return;
+        }
 
         set((state) => ({
           tabs: updateTab(state.tabs, tabId, (t) => {
