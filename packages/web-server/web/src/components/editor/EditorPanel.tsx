@@ -70,23 +70,42 @@ export function EditorPanel() {
     editorRef.current = editor;
     monacoRef.current = monaco;
 
+    // When the editor is disposed (HMR unmount), clear the ref so
+    // our useEffect doesn't call setModel() on a dead instance.
+    editor.onDidDispose(() => {
+      editorRef.current = null;
+    });
+
     // Register Cmd+Click / Ctrl+Click go-to-definition file opener
     const { openFile } = useFileStore.getState();
     registerEditorOpener(monaco, openFile);
   }, []);
 
-  // Whenever the active file changes, register background models and load types.
-  // NOTE: We do NOT call editor.setModel() here — @monaco-editor/react manages
-  // model switching internally via the `path` prop on <Editor>. Calling setModel()
-  // manually fights with the library's lifecycle and causes disposal crashes.
+  // Whenever the active file changes, set the correct model and load types
   useEffect(() => {
     const monaco = monacoRef.current;
-    if (!monaco || !activeFile) return;
+    const editor = editorRef.current;
+    if (!monaco || !editor || !activeFile) return;
 
-    // Register all open files as models so Monaco's TS worker can resolve
-    // cross-file references (IntelliSense, go-to-definition, etc.)
+    // Create or get the model for this file (at file:// URI for TS worker)
+    const model = getOrCreateModel(
+      monaco,
+      activeFile.path,
+      activeFile.content,
+      activeFile.language,
+    );
+
+    // Switch model if different — this ensures the TS worker sees our
+    // file:// URI models, which is required for go-to-definition.
+    if (editor.getModel() !== model) {
+      editor.setModel(model);
+    }
+
+    // Register all other open files as models for cross-file IntelliSense
     for (const file of openFiles) {
-      getOrCreateModel(monaco, file.path, file.content, file.language);
+      if (file.path !== activeFile.path) {
+        getOrCreateModel(monaco, file.path, file.content, file.language);
+      }
     }
 
     // Load project tsconfig on first file open (async, non-blocking)
