@@ -43,6 +43,12 @@ const FILE_EDIT_TOOLS = new Set([
   "editfile",
   "createnewfile",
   "create_new_file",
+  "multi_edit",
+  "multiedit",
+  "str_replace_editor",
+  "replace_in_file",
+  "insert_code_block",
+  "insertcodeblock",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -446,7 +452,7 @@ const ToolCallCard = ({ toolCall, onApprove, onReject }: ToolCallCardProps) => {
               <h4 className="text-text-tertiary mb-1.5 text-[10px] font-semibold uppercase tracking-wider">
                 Arguments
               </h4>
-              <div className="bg-bg-elevated rounded-lg p-2.5">
+              <div className="bg-bg-elevated max-h-[300px] overflow-auto rounded-lg p-2.5">
                 <ParsedArgs argsJson={toolCall.args} />
               </div>
             </div>

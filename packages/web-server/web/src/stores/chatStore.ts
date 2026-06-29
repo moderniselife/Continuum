@@ -273,7 +273,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
             tabs: updateTab(state.tabs, tabId, (t) => ({
               messages: [
                 ...t.messages,
-                { role: "assistant" as const, content: "" },
+                {
+                  role: "assistant" as const,
+                  content: "",
+                  createdAt: new Date().toISOString(),
+                },
               ],
             })),
           }));

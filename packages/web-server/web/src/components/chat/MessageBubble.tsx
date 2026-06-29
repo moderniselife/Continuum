@@ -213,10 +213,14 @@ const MessageBubble = ({ message, isStreaming }: MessageBubbleProps) => {
             isUser ? "text-right" : "text-left"
           }`}
         >
-          {new Date(message.createdAt).toLocaleTimeString("en-AU", {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
+          {(() => {
+            const d = message.createdAt ? new Date(message.createdAt) : null;
+            if (!d || isNaN(d.getTime())) return null;
+            return d.toLocaleTimeString("en-AU", {
+              hour: "2-digit",
+              minute: "2-digit",
+            });
+          })()}
         </span>
       </div>
     </div>
