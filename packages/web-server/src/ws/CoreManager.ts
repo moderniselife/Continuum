@@ -422,13 +422,44 @@ class WebCoreMessenger implements IMessenger<ToCoreProtocol, FromCoreProtocol> {
                 }
               }
 
-              // Accumulate tool call deltas
+              // Merge tool call deltas — LLM providers stream arguments
+              // as partial JSON fragments across multiple chunks. We need
+              // to concatenate them by tool call ID, not replace.
               if (
                 "toolCalls" in chunk &&
                 chunk.toolCalls &&
                 chunk.toolCalls.length > 0
               ) {
-                accumulatedToolCalls = chunk.toolCalls;
+                for (const delta of chunk.toolCalls) {
+                  const idx = accumulatedToolCalls.findIndex(
+                    (tc) => tc.id && tc.id === delta.id,
+                  );
+                  if (idx >= 0) {
+                    // Existing tool call — append arguments fragment
+                    const existing = accumulatedToolCalls[idx];
+                    if (delta.function?.arguments) {
+                      existing.function = existing.function ?? {};
+                      existing.function.arguments =
+                        (existing.function.arguments ?? "") +
+                        delta.function.arguments;
+                    }
+                    // Update name if provided (usually only on first delta)
+                    if (delta.function?.name) {
+                      existing.function = existing.function ?? {};
+                      existing.function.name = delta.function.name;
+                    }
+                  } else {
+                    // New tool call — add to accumulator
+                    accumulatedToolCalls.push({
+                      id: delta.id,
+                      type: delta.type ?? "function",
+                      function: {
+                        name: delta.function?.name ?? "",
+                        arguments: delta.function?.arguments ?? "",
+                      },
+                    });
+                  }
+                }
               }
 
               next = await result.next();
