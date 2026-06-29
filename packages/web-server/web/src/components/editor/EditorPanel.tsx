@@ -70,12 +70,6 @@ export function EditorPanel() {
     editorRef.current = editor;
     monacoRef.current = monaco;
 
-    // When the editor is disposed (HMR unmount), clear the ref so
-    // our useEffect doesn't call setModel() on a dead instance.
-    editor.onDidDispose(() => {
-      editorRef.current = null;
-    });
-
     // Register Cmd+Click / Ctrl+Click go-to-definition file opener
     const { openFile } = useFileStore.getState();
     registerEditorOpener(monaco, openFile);
@@ -87,7 +81,7 @@ export function EditorPanel() {
     const editor = editorRef.current;
     if (!monaco || !editor || !activeFile) return;
 
-    // Create or get the model for this file (at file:// URI for TS worker)
+    // Create or get the model for this file
     const model = getOrCreateModel(
       monaco,
       activeFile.path,
@@ -95,13 +89,12 @@ export function EditorPanel() {
       activeFile.language,
     );
 
-    // Switch model if different — this ensures the TS worker sees our
-    // file:// URI models, which is required for go-to-definition.
+    // Only switch model if it's different from current
     if (editor.getModel() !== model) {
       editor.setModel(model);
     }
 
-    // Register all other open files as models for cross-file IntelliSense
+    // Also register all other open files as extra libs for cross-file refs
     for (const file of openFiles) {
       if (file.path !== activeFile.path) {
         getOrCreateModel(monaco, file.path, file.content, file.language);
@@ -244,12 +237,12 @@ async function loadRelativeImports(
       content: fileContent,
     } of resolved) {
       // Register as a model so Monaco's TS worker can resolve references
-      // Standalone Monaco uses "typescript" for both .ts and .tsx,
-      // and "javascript" for both .js and .jsx.
       const lang =
-        resolvedPath.endsWith(".ts") || resolvedPath.endsWith(".tsx")
-          ? "typescript"
-          : "javascript";
+        resolvedPath.endsWith(".tsx") || resolvedPath.endsWith(".jsx")
+          ? "typescriptreact"
+          : resolvedPath.endsWith(".ts")
+            ? "typescript"
+            : "javascript";
       getOrCreateModel(monaco, resolvedPath, fileContent, lang);
 
       // For path-alias imports (@/, ~/), also register as an extraLib
