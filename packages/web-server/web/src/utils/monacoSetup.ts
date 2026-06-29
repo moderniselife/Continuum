@@ -353,3 +353,125 @@ export function getPackageName(specifier: string): string {
   // Regular package: take first segment
   return specifier.split("/")[0];
 }
+
+/**
+ * Extracts the import specifier string at a given position in the model.
+ * Looks for import/require statements and extracts the module path string.
+ */
+function getImportSpecifierAtPosition(
+  model: import("monaco-editor").editor.ITextModel,
+  position: import("monaco-editor").Position,
+): string | null {
+  const line = model.getLineContent(position.lineNumber);
+
+  // Match: import ... from "specifier" or import "specifier"
+  // Also: require("specifier"), import("specifier")
+  const patterns = [
+    /from\s+['"]([^'"]+)['"]/,
+    /import\s*\(\s*['"]([^'"]+)['"]\s*\)/,
+    /require\s*\(\s*['"]([^'"]+)['"]\s*\)/,
+    /import\s+['"]([^'"]+)['"]/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = line.match(pattern);
+    if (match) {
+      const specifier = match[1];
+      // Check if the cursor is within or near the specifier string
+      const specStart = line.indexOf(specifier);
+      const specEnd = specStart + specifier.length;
+      // Allow some slack — anywhere on the import line counts
+      if (position.column >= 1) {
+        return specifier;
+      }
+    }
+  }
+
+  return null;
+}
+
+/** Disposable handle — stored so we don't register multiple providers. */
+let definitionProviderDisposable: import("monaco-editor").IDisposable | null =
+  null;
+
+/**
+ * Registers a Monaco DefinitionProvider for TypeScript/JavaScript that
+ * resolves import specifiers on Cmd+Click / Ctrl+Click.
+ *
+ * When the user clicks an import path, we:
+ *  1. Extract the import specifier under the cursor
+ *  2. Resolve it to an absolute file path via the resolve-imports API
+ *  3. Open the resolved file in the editor (via openFileFn callback)
+ *  4. Return a definition location so Monaco jumps to line 1 of the target
+ */
+export function registerDefinitionProvider(
+  monaco: Monaco,
+  openFileFn: (filePath: string) => Promise<void>,
+): void {
+  // Only register once
+  if (definitionProviderDisposable) return;
+
+  const languages = [
+    "typescript",
+    "typescriptreact",
+    "javascript",
+    "javascriptreact",
+  ];
+
+  // We need to use a single registration for all languages
+  definitionProviderDisposable = monaco.languages.registerDefinitionProvider(
+    languages.map((l) => ({ language: l })),
+    {
+      provideDefinition: async (model, position) => {
+        const specifier = getImportSpecifierAtPosition(model, position);
+        if (!specifier) return null;
+
+        // Skip node built-ins
+        if (specifier.startsWith("node:")) return null;
+
+        // Get the source file path from the model URI
+        const sourceUri = model.uri.toString();
+        // Strip file:// prefix to get the actual path
+        const sourcePath = sourceUri.startsWith("file://")
+          ? sourceUri.slice(7)
+          : sourceUri;
+
+        try {
+          // Use the resolve-imports API
+          const { resolveImports: resolveImportsFn } = await import(
+            "@/api/files"
+          );
+          const result = await resolveImportsFn(sourcePath, [specifier]);
+
+          if (result.resolved && result.resolved.length > 0) {
+            const resolved = result.resolved[0];
+            const targetPath = resolved.path;
+
+            // Open the file in the editor
+            void openFileFn(targetPath);
+
+            // Create a model URI for the target
+            const targetUri = monaco.Uri.parse(`file://${targetPath}`);
+
+            // Return a definition location (line 1, column 1 of target file)
+            return {
+              uri: targetUri,
+              range: new monaco.Range(1, 1, 1, 1),
+            };
+          }
+        } catch (err) {
+          console.warn(
+            `[monacoSetup] Failed to resolve definition for "${specifier}":`,
+            err,
+          );
+        }
+
+        return null;
+      },
+    },
+  );
+
+  console.info(
+    "[monacoSetup] DefinitionProvider registered for Cmd+Click navigation",
+  );
+}

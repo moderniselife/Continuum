@@ -26,6 +26,7 @@ import {
   isRelativeImport,
   getPackageName,
   registerTypeDeclarations,
+  registerDefinitionProvider,
 } from "@/utils/monacoSetup";
 import { resolveTypes, resolveImports } from "@/api/files";
 
@@ -68,6 +69,10 @@ export function EditorPanel() {
   const handleMount: OnMount = useCallback((editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
+
+    // Register Cmd+Click / Ctrl+Click go-to-definition on import paths
+    const { openFile } = useFileStore.getState();
+    registerDefinitionProvider(monaco, openFile);
   }, []);
 
   // Whenever the active file changes, set the correct model and load types
